@@ -118,6 +118,6 @@ echo "  Mot de passe root  : $ROOTPW   (note-le ; accès par « pct enter $CTID 
 if [ -z "$APP_PW" ]; then echo "  Premier accès      : crée le mot de passe de l'application dans le navigateur, ${C_B}tout de suite${C_0}."
 else echo "  Connexion          : mot de passe défini à l'installation."; fi
 echo
-echo "  Mettre à jour      : pct exec $CTID -- update"
+echo "  Mettre à jour      : pct exec $CTID -- /usr/local/bin/update"
 echo "  Sauvegardes        : automatiques chaque nuit dans le conteneur (/var/lib/easyludo/backups, 14 jours)"
 echo "  Scan code-barres   : le navigateur exige HTTPS → place l'app derrière un reverse proxy (voir README)."
