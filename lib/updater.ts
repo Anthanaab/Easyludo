@@ -45,8 +45,8 @@ export async function current(): Promise<Version | null> {
 
 // Même chemin que le script « update » (git fetch) : pas de limite d'API GitHub, même réseau que la mise à jour réelle.
 let cache: { at: number; v: Version | null; error: string } | null = null;
-export async function latest(): Promise<{ v: Version | null; error: string }> {
-  if (cache && Date.now() - cache.at < 5 * 60e3 && cache.v) return { v: cache.v, error: "" };
+export async function latest(force = false): Promise<{ v: Version | null; error: string }> {
+  if (!force && cache && Date.now() - cache.at < 5 * 60e3 && cache.v) return { v: cache.v, error: "" };
   const { branch } = conf();
   try {
     await git(["fetch", "--quiet", "--depth", "1", "origin", branch], 20000);

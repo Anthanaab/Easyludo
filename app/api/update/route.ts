@@ -1,13 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { denyIfNotAuthed } from "@/lib/session";
 import { current, latest, logTail, request, status, supported } from "@/lib/updater";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const denied = await denyIfNotAuthed(); if (denied) return denied;
   if (!supported()) return NextResponse.json({ supported: false });
-  const [cur, lat] = await Promise.all([current(), latest()]);
+  const [cur, lat] = await Promise.all([current(), latest(req.nextUrl.searchParams.get("refresh") === "1")]);
   return NextResponse.json({
     supported: true, current: cur, latest: lat.v, latestError: lat.error,
     updateAvailable: !!(cur && lat.v && cur.sha !== lat.v.sha),

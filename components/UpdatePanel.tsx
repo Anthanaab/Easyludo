@@ -15,12 +15,19 @@ export default function UpdatePanel() {
   const [err, setErr] = useState("");
   const baseline = useRef<string | null>(null); // horodatage de l'ancien état : on le compare, jamais l'horloge du navigateur
 
-  const load = useCallback(async () => {
+  const [checking, setChecking] = useState(false);
+  const [checkedAt, setCheckedAt] = useState("");
+
+  // refresh = force une vraie vérification auprès de GitHub (sinon résultat gardé 5 min côté serveur)
+  const load = useCallback(async (refresh = false) => {
+    if (refresh) setChecking(true);
     try {
-      const r = await fetch("/api/update", { cache: "no-store" });
+      const r = await fetch("/api/update" + (refresh ? "?refresh=1" : ""), { cache: "no-store" });
       if (!r.ok) throw new Error(String(r.status));
       setInfo(await r.json()); setOffline(false);
+      if (refresh) setCheckedAt(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch { setOffline(true); }
+    if (refresh) setChecking(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -99,7 +106,8 @@ export default function UpdatePanel() {
           <button className="btn primary" onClick={start} disabled={!info.updateAvailable}>
             {info.updateAvailable ? "Mettre à jour maintenant" : "✓ À jour"}
           </button>
-          <button className="btn small" onClick={load}>Vérifier</button>
+          <button className="btn small" onClick={() => load(true)} disabled={checking}>{checking ? "Vérification…" : "↻ Vérifier"}</button>
+          {checkedAt && !checking && <span className="hint">Vérifié à {checkedAt} : {info.updateAvailable ? "nouvelle version disponible" : "aucune nouvelle version"}</span>}
           <span className="hint">Une sauvegarde est faite avant ; retour automatique à la version précédente si la compilation échoue.</span>
         </div>
       )}
