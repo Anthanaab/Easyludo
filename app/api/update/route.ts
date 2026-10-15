@@ -9,8 +9,8 @@ export async function GET() {
   if (!supported()) return NextResponse.json({ supported: false });
   const [cur, lat] = await Promise.all([current(), latest()]);
   return NextResponse.json({
-    supported: true, current: cur, latest: lat,
-    updateAvailable: !!(cur && lat && cur.sha !== lat.sha),
+    supported: true, current: cur, latest: lat.v, latestError: lat.error,
+    updateAvailable: !!(cur && lat.v && cur.sha !== lat.v.sha),
     status: status(), log: logTail(),
   });
 }

@@ -26,34 +26,38 @@ function conf() {
       if (m) out[m[1]] = m[2];
     }
   } catch {}
-  return { repo: out.EASYLUDO_REPO ?? "", branch: out.EASYLUDO_BRANCH || "main" };
+  return { branch: out.EASYLUDO_BRANCH || "main" };
 }
 
-const git = (args: string[]) =>
+const git = (args: string[], timeout = 5000) =>
   new Promise<string>((resolve, reject) =>
-    execFile("git", args, { cwd: process.cwd(), timeout: 5000 }, (e, out) => (e ? reject(e) : resolve(out.trim()))));
+    execFile("git", args, { cwd: process.cwd(), timeout }, (e, out, err) =>
+      e ? reject(new Error((err || e.message).trim().split("\n").pop())) : resolve(out.trim())));
+
+const parse = (out: string): Version => {
+  const [sha, subject, date] = out.split("\n");
+  return { sha, subject, date };
+};
 
 export async function current(): Promise<Version | null> {
-  try {
-    const [sha, subject, date] = (await git(["log", "-1", "--format=%H%n%s%n%cI"])).split("\n");
-    return { sha, subject, date };
-  } catch { return null; }
+  try { return parse(await git(["log", "-1", "--format=%H%n%s%n%cI"])); } catch { return null; }
 }
 
-let cache: { at: number; v: Version | null } | null = null;
-export async function latest(): Promise<Version | null> {
-  if (cache && Date.now() - cache.at < 5 * 60e3) return cache.v;
-  const { repo, branch } = conf();
-  if (!repo) return null;
+// Même chemin que le script « update » (git fetch) : pas de limite d'API GitHub, même réseau que la mise à jour réelle.
+let cache: { at: number; v: Version | null; error: string } | null = null;
+export async function latest(): Promise<{ v: Version | null; error: string }> {
+  if (cache && Date.now() - cache.at < 5 * 60e3 && cache.v) return { v: cache.v, error: "" };
+  const { branch } = conf();
   try {
-    const r = await fetch(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(branch)}`,
-      { headers: { Accept: "application/vnd.github+json", "User-Agent": "EasyLudo" }, signal: AbortSignal.timeout(6000) });
-    if (!r.ok) return cache?.v ?? null;
-    const j = await r.json();
-    const v = { sha: j.sha, subject: String(j.commit?.message ?? "").split("\n")[0], date: j.commit?.committer?.date ?? "" };
-    cache = { at: Date.now(), v };
-    return v;
-  } catch { return cache?.v ?? null; }
+    await git(["fetch", "--quiet", "--depth", "1", "origin", branch], 20000);
+    const v = parse(await git(["log", "-1", "--format=%H%n%s%n%cI", "FETCH_HEAD"]));
+    cache = { at: Date.now(), v, error: "" };
+    return { v, error: "" };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    cache = { at: Date.now(), v: cache?.v ?? null, error };
+    return { v: cache.v, error };
+  }
 }
 
 export function status(): UpdateStatus | null {

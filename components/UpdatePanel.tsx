@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type V = { sha: string; subject: string; date: string };
 type St = { state: "running" | "ok" | "error"; message: string; from: string; to: string; at: string };
-type Info = { supported: boolean; current: V | null; latest: V | null; updateAvailable: boolean; status: St | null; log: string };
+type Info = { supported: boolean; current: V | null; latest: V | null; latestError?: string; updateAvailable: boolean; status: St | null; log: string };
 
 const short = (v: V | null) => (v ? v.sha.slice(0, 7) : "?");
 const day = (v: V | null) => (v?.date ? new Date(v.date).toLocaleDateString("fr-FR") : "");
@@ -73,7 +73,8 @@ export default function UpdatePanel() {
         <div><label>Version installée</label><b>{short(info.current)}</b> <span className="hint">{day(info.current)}</span>
           <div className="hint">{info.current?.subject}</div></div>
         <div><label>Dernière version disponible</label><b>{short(info.latest)}</b> <span className="hint">{day(info.latest)}</span>
-          <div className="hint">{info.latest?.subject ?? "Impossible de contacter GitHub pour le moment."}</div></div>
+          <div className="hint">{info.latest?.subject ?? "Impossible de contacter GitHub pour le moment."}</div>
+          {!info.latest && info.latestError && <div className="err" style={{ fontSize: 12 }}>{info.latestError}</div>}</div>
       </div>
 
       {running && (
