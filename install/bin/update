@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Met EasyLudo à jour depuis GitHub (sauvegarde avant, retour arrière si la compilation échoue).
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # pct exec fournit un PATH minimal
+[ "$(id -u)" -eq 0 ] || { echo "À lancer en root."; exit 1; }
+. /etc/easyludo.conf
+cd /opt/easyludo
+as() { runuser -u easyludo -- env HOME=/var/lib/easyludo NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=1536 "$@"; }
+OLD=$(as git rev-parse HEAD)
+# Les scripts utilitaires viennent du dépôt : on les réinstalle à chaque mise à jour
+refresh_scripts() { install -m 755 /opt/easyludo/install/bin/* /usr/local/bin/; }
+build() { as bash -c 'cd /opt/easyludo && npm ci --no-audit --no-fund && npm run build'; }
+/usr/local/bin/easyludo-backup
+as git fetch --quiet --depth 1 origin "$EASYLUDO_BRANCH"
+NEW=$(as git rev-parse FETCH_HEAD)
+[ "$OLD" != "$NEW" ] || { echo "Déjà à jour (${OLD:0:7})."; refresh_scripts; exit 0; }
+systemctl stop easyludo
+as git reset --hard FETCH_HEAD
+if build; then refresh_scripts; systemctl start easyludo; echo "Mis à jour : ${OLD:0:7} → ${NEW:0:7}"
+else
+  echo "Échec de la compilation : retour à la version précédente."
+  as git reset --hard "$OLD"; build || true
+  systemctl start easyludo; exit 1
+fi

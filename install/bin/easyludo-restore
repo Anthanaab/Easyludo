@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Usage : easyludo-restore /var/lib/easyludo/backups/easyludo-XXXX.tar.gz
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # pct exec fournit un PATH minimal
+[ -f "${1:-}" ] || { echo "Usage : easyludo-restore <archive.tar.gz>"; ls -1 /var/lib/easyludo/backups; exit 1; }
+D=/var/lib/easyludo/data
+/usr/local/bin/easyludo-backup >/dev/null   # filet de sécurité avant de restaurer
+systemctl stop easyludo
+rm -rf "$D/easyludo.db" "$D/easyludo.db-wal" "$D/easyludo.db-shm" "$D/uploads"
+tar -xzf "$1" -C "$D"
+chown -R easyludo:easyludo "$D"
+systemctl start easyludo
+echo "Restauration terminée."

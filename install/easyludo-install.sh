@@ -81,59 +81,8 @@ ProtectSystem=full
 WantedBy=multi-user.target
 UNIT
 
-step "Sauvegarde automatique, restauration, mise à jour"
-cat > /usr/local/bin/easyludo-backup <<'SCRIPT'
-#!/usr/bin/env bash
-# Sauvegarde cohérente de la base (SQLite) + photos, conservée 14 jours.
-set -euo pipefail
-D=/var/lib/easyludo/data; B=/var/lib/easyludo/backups
-umask 077; mkdir -p "$B"
-T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
-[ -f "$D/easyludo.db" ] && sqlite3 "$D/easyludo.db" ".backup '$T/easyludo.db'"
-[ -d "$D/uploads" ] && cp -r "$D/uploads" "$T/uploads"
-F="$B/easyludo-$(date +%F_%H%M%S).tar.gz"
-tar -czf "$F" -C "$T" .
-find "$B" -name 'easyludo-*.tar.gz' -mtime +14 -delete
-echo "Sauvegarde : $F"
-SCRIPT
-cat > /usr/local/bin/easyludo-restore <<'SCRIPT'
-#!/usr/bin/env bash
-# Usage : easyludo-restore /var/lib/easyludo/backups/easyludo-XXXX.tar.gz
-set -euo pipefail
-[ -f "${1:-}" ] || { echo "Usage : easyludo-restore <archive.tar.gz>"; ls -1 /var/lib/easyludo/backups; exit 1; }
-D=/var/lib/easyludo/data
-easyludo-backup >/dev/null   # filet de sécurité avant de restaurer
-systemctl stop easyludo
-rm -rf "$D/easyludo.db" "$D/easyludo.db-wal" "$D/easyludo.db-shm" "$D/uploads"
-tar -xzf "$1" -C "$D"
-chown -R easyludo:easyludo "$D"
-systemctl start easyludo
-echo "Restauration terminée."
-SCRIPT
-cat > /usr/local/bin/update <<'SCRIPT'
-#!/usr/bin/env bash
-# Met EasyLudo à jour depuis GitHub (sauvegarde avant, retour arrière si la compilation échoue).
-set -euo pipefail
-[ "$(id -u)" -eq 0 ] || { echo "À lancer en root."; exit 1; }
-. /etc/easyludo.conf
-cd /opt/easyludo
-as() { runuser -u easyludo -- env HOME=/var/lib/easyludo NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=1536 "$@"; }
-OLD=$(as git rev-parse HEAD)
-build() { as bash -c 'cd /opt/easyludo && npm ci --no-audit --no-fund && npm run build'; }
-easyludo-backup
-as git fetch --quiet --depth 1 origin "$EASYLUDO_BRANCH"
-NEW=$(as git rev-parse FETCH_HEAD)
-[ "$OLD" != "$NEW" ] || { echo "Déjà à jour ($OLD)."; exit 0; }
-systemctl stop easyludo
-as git reset --hard FETCH_HEAD
-if build; then systemctl start easyludo; echo "Mis à jour : ${OLD:0:7} → ${NEW:0:7}"
-else
-  echo "Échec de la compilation : retour à la version précédente."
-  as git reset --hard "$OLD"; build || true
-  systemctl start easyludo; exit 1
-fi
-SCRIPT
-chmod 755 /usr/local/bin/easyludo-backup /usr/local/bin/easyludo-restore /usr/local/bin/update
+step "Scripts utilitaires (update, sauvegarde, restauration)"
+install -m 755 "$APP_DIR"/install/bin/* /usr/local/bin/
 cat > /etc/systemd/system/easyludo-backup.service <<'UNIT'
 [Unit]
 Description=Sauvegarde EasyLudo

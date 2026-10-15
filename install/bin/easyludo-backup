@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Sauvegarde cohérente de la base (SQLite) + photos, conservée 14 jours.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # pct exec fournit un PATH minimal
+D=/var/lib/easyludo/data; B=/var/lib/easyludo/backups
+umask 077; mkdir -p "$B"
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+[ -f "$D/easyludo.db" ] && sqlite3 "$D/easyludo.db" ".backup '$T/easyludo.db'"
+[ -d "$D/uploads" ] && cp -r "$D/uploads" "$T/uploads"
+F="$B/easyludo-$(date +%F_%H%M%S).tar.gz"
+tar -czf "$F" -C "$T" .
+find "$B" -name 'easyludo-*.tar.gz' -mtime +14 -delete
+echo "Sauvegarde : $F"
