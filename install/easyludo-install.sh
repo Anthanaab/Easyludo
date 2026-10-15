@@ -83,6 +83,8 @@ UNIT
 
 step "Scripts utilitaires (update, sauvegarde, restauration)"
 install -m 755 "$APP_DIR"/install/bin/* /usr/local/bin/
+# Raccourcis dans /usr/bin : trouvés aussi par « pct exec » (PATH minimal)
+for f in "$APP_DIR"/install/bin/*; do ln -sf "/usr/local/bin/$(basename "$f")" "/usr/bin/$(basename "$f")"; done
 cat > /etc/systemd/system/easyludo-backup.service <<'UNIT'
 [Unit]
 Description=Sauvegarde EasyLudo

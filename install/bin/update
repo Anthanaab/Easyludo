@@ -8,7 +8,11 @@ cd /opt/easyludo
 as() { runuser -u easyludo -- env HOME=/var/lib/easyludo NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=1536 "$@"; }
 OLD=$(as git rev-parse HEAD)
 # Les scripts utilitaires viennent du dépôt : on les réinstalle à chaque mise à jour
-refresh_scripts() { install -m 755 /opt/easyludo/install/bin/* /usr/local/bin/; }
+refresh_scripts() {
+  install -m 755 /opt/easyludo/install/bin/* /usr/local/bin/
+  # Raccourcis dans /usr/bin : trouvés aussi par « pct exec » (PATH minimal)
+  for f in /opt/easyludo/install/bin/*; do ln -sf "/usr/local/bin/$(basename "$f")" "/usr/bin/$(basename "$f")"; done
+}
 build() { as bash -c 'cd /opt/easyludo && npm ci --no-audit --no-fund && npm run build'; }
 /usr/local/bin/easyludo-backup
 as git fetch --quiet --depth 1 origin "$EASYLUDO_BRANCH"

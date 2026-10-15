@@ -33,13 +33,11 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easyludo/main/
 
 | Action | Commande |
 |---|---|
-| Mettre à jour | `pct exec <ID> -- /usr/local/bin/update` |
-| Sauvegarder maintenant | `pct exec <ID> -- /usr/local/bin/easyludo-backup` |
-| Restaurer | `pct exec <ID> -- /usr/local/bin/easyludo-restore /var/lib/easyludo/backups/<archive>.tar.gz` |
+| Mettre à jour | `pct exec <ID> -- update` |
+| Sauvegarder maintenant | `pct exec <ID> -- easyludo-backup` |
+| Restaurer | `pct exec <ID> -- easyludo-restore /var/lib/easyludo/backups/<archive>.tar.gz` |
 | Journal | `pct exec <ID> -- journalctl -u easyludo -n 50` |
 | Console | `pct enter <ID>` |
-
-Depuis `pct enter <ID>`, les commandes se lancent sans chemin (`update`, `easyludo-backup`…). Avec `pct exec`, garde le chemin complet `/usr/local/bin/…`.
 
 - **Mise à jour** : sauvegarde automatique avant, puis retour à la version précédente si la compilation échoue.
 - **Sauvegardes** : chaque nuit à 03:30, 14 jours conservés dans `/var/lib/easyludo/backups` (base + photos).
