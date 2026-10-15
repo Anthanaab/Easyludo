@@ -39,7 +39,10 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easyludo/main/
 | Journal | `pct exec <ID> -- journalctl -u easyludo -n 50` |
 | Console | `pct enter <ID>` |
 
-- **Mise à jour** : sauvegarde automatique avant, puis retour à la version précédente si la compilation échoue.
+- **Mise à jour depuis l'interface** : ⚙️ Paramètres → **Mise à jour**. L'app compare la version installée à la dernière sur GitHub ;
+  le bouton lance la mise à jour (sauvegarde, compilation, redémarrage) et suit l'avancement. Sur un conteneur installé avant cette
+  fonction, lance `update` **deux fois** dans le conteneur : la première récupère le code, la seconde active le bouton.
+- **Mise à jour en ligne de commande** : sauvegarde automatique avant, puis retour à la version précédente si la compilation échoue.
 - **Sauvegardes** : chaque nuit à 03:30, 14 jours conservés dans `/var/lib/easyludo/backups` (base + photos).
   Elles sont **dans le conteneur** : ajoute aussi le conteneur à tes sauvegardes Proxmox (vzdump).
 - **Clés API et mot de passe** : `/etc/easyludo.env`, puis `systemctl restart easyludo`.

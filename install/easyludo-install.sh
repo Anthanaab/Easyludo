@@ -116,6 +116,7 @@ MOTD
 
 systemctl daemon-reload
 systemctl enable --now easyludo easyludo-backup.timer >/dev/null 2>&1
+/usr/local/bin/update --setup   # active aussi la mise à jour depuis l'interface
 
 step "Vérification"
 for _ in $(seq 1 30); do

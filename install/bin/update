@@ -1,28 +1,91 @@
 #!/usr/bin/env bash
 # Met EasyLudo à jour depuis GitHub (sauvegarde avant, retour arrière si la compilation échoue).
+#   update            mise à jour manuelle
+#   update --from-web lancé par l'interface (via easyludo-update.service)
+#   update --setup    réinstalle les scripts et l'intégration systemd, sans mise à jour
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # pct exec fournit un PATH minimal
 [ "$(id -u)" -eq 0 ] || { echo "À lancer en root."; exit 1; }
 . /etc/easyludo.conf
-cd /opt/easyludo
-as() { runuser -u easyludo -- env HOME=/var/lib/easyludo NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=1536 "$@"; }
-OLD=$(as git rev-parse HEAD)
+MODE="${1:-}"
+DATA=/var/lib/easyludo/data
+STATUS="$DATA/update-status.json"
+LOG="$DATA/update.log"
+OLD=""; FINAL=0
+
+# État lu par l'interface web (écriture atomique, lisible par l'utilisateur easyludo)
+write_status() { # état message [ancienne] [nouvelle]
+  local tmp; tmp=$(mktemp "$DATA/.status.XXXXXX")
+  printf '{"state":"%s","message":"%s","from":"%s","to":"%s","at":"%s"}\n' "$1" "$2" "${3:-$OLD}" "${4:-}" "$(date -Is)" > "$tmp"
+  chown easyludo:easyludo "$tmp"; chmod 644 "$tmp"; mv -f "$tmp" "$STATUS"
+}
+on_exit() { local rc=$?; if [ $rc -ne 0 ] && [ "$FINAL" -eq 0 ]; then write_status error "Échec de la mise à jour (voir le journal)"; fi; }
+trap on_exit EXIT
+
 # Les scripts utilitaires viennent du dépôt : on les réinstalle à chaque mise à jour
 refresh_scripts() {
   install -m 755 /opt/easyludo/install/bin/* /usr/local/bin/
   # Raccourcis dans /usr/bin : trouvés aussi par « pct exec » (PATH minimal)
   for f in /opt/easyludo/install/bin/*; do ln -sf "/usr/local/bin/$(basename "$f")" "/usr/bin/$(basename "$f")"; done
 }
+
+# Mise à jour déclenchée depuis l'interface : l'app dépose un fichier, systemd lance ce script en root
+ensure_web_update() {
+  cat > /etc/systemd/system/easyludo-update.service <<'UNIT'
+[Unit]
+Description=Mise à jour d'EasyLudo (demandée depuis l'interface)
+[Service]
+Type=oneshot
+ExecStartPre=/bin/rm -f /var/lib/easyludo/data/update.request
+ExecStart=/usr/local/bin/update --from-web
+TimeoutStartSec=1800
+UNIT
+  cat > /etc/systemd/system/easyludo-update.path <<'UNIT'
+[Unit]
+Description=Surveille les demandes de mise à jour d'EasyLudo
+[Path]
+PathExists=/var/lib/easyludo/data/update.request
+Unit=easyludo-update.service
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now easyludo-update.path >/dev/null 2>&1
+}
+
+cd /opt/easyludo
+as() { runuser -u easyludo -- env HOME=/var/lib/easyludo NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=1536 "$@"; }
 build() { as bash -c 'cd /opt/easyludo && npm ci --no-audit --no-fund && npm run build'; }
+
+ensure_web_update
+if [ "$MODE" = "--setup" ]; then refresh_scripts; FINAL=1; exit 0; fi
+
+install -o easyludo -g easyludo -m 644 /dev/null "$LOG"
+exec > >(tee "$LOG") 2>&1
+
+OLD=$(as git rev-parse HEAD)
+write_status running "Sauvegarde des données…"
 /usr/local/bin/easyludo-backup
+write_status running "Recherche de la dernière version…"
 as git fetch --quiet --depth 1 origin "$EASYLUDO_BRANCH"
 NEW=$(as git rev-parse FETCH_HEAD)
-[ "$OLD" != "$NEW" ] || { echo "Déjà à jour (${OLD:0:7})."; refresh_scripts; exit 0; }
+if [ "$OLD" = "$NEW" ]; then
+  echo "Déjà à jour (${OLD:0:7})."; refresh_scripts
+  FINAL=1; write_status ok "Déjà à jour" "$OLD" "$OLD"; exit 0
+fi
+write_status running "Arrêt du service et installation de la nouvelle version…"
 systemctl stop easyludo
 as git reset --hard FETCH_HEAD
-if build; then refresh_scripts; systemctl start easyludo; echo "Mis à jour : ${OLD:0:7} → ${NEW:0:7}"
+write_status running "Compilation (quelques minutes)…" "$OLD" "$NEW"
+if build; then
+  refresh_scripts; systemctl start easyludo
+  echo "Mis à jour : ${OLD:0:7} → ${NEW:0:7}"
+  FINAL=1; write_status ok "Mise à jour terminée" "$OLD" "$NEW"
 else
   echo "Échec de la compilation : retour à la version précédente."
+  write_status running "Échec de la compilation, retour à la version précédente…" "$OLD" "$NEW"
   as git reset --hard "$OLD"; build || true
-  systemctl start easyludo; exit 1
+  systemctl start easyludo
+  FINAL=1; write_status error "La compilation a échoué : version précédente restaurée" "$OLD" "$NEW"
+  exit 1
 fi

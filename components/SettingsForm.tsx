@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { SOURCES } from "@/lib/sourcesMeta";
+import UpdatePanel from "./UpdatePanel";
 
 type State = { id: string; enabled: boolean; keysOk: boolean; keys: { name: string; set: boolean }[] };
 
@@ -80,6 +81,7 @@ export default function SettingsForm() {
           })}
         </section>
       ))}
+      <UpdatePanel />
       <section className="sec">
         <h3>🔒 Sécurité</h3>
         <div className="row">
