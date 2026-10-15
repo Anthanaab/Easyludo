@@ -79,3 +79,7 @@ export function request(): "ok" | "busy" {
   fs.writeFileSync(REQUEST, new Date().toISOString());
   return "ok";
 }
+
+// Version affichée dans le pied de page : lue une fois par démarrage (elle ne change qu'avec un redémarrage)
+let shortCache: Promise<string> | null = null;
+export const shortVersion = () => (shortCache ??= current().then((v) => v?.sha.slice(0, 7) ?? ""));
