@@ -81,6 +81,11 @@ export default function SettingsForm() {
           })}
         </section>
       ))}
+      <section className="sec">
+        <h3>📤 Données</h3>
+        <span className="hint">Télécharge toute la collection au format CSV (s'ouvre dans Excel, Numbers ou LibreOffice) : titres, prix, plus-value, états, notes.</span>
+        <div><a className="btn" href="/api/export" download>⬇ Exporter la collection (CSV)</a></div>
+      </section>
       <UpdatePanel />
       <section className="sec">
         <h3>🔒 Sécurité</h3>
