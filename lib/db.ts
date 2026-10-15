@@ -40,19 +40,22 @@ db.pragma("foreign_keys = ON");
 if (!(db.prepare("PRAGMA table_info(games)").all() as { name: string }[]).some((c) => c.name === "publisher"))
   db.exec("ALTER TABLE games ADD COLUMN publisher TEXT NOT NULL DEFAULT ''");
 
+if (!(db.prepare("PRAGMA table_info(games)").all() as { name: string }[]).some((c) => c.name === "item_type"))
+  db.exec("ALTER TABLE games ADD COLUMN item_type TEXT NOT NULL DEFAULT 'game'");
+
 export type Game = {
-  id: number; title: string; platform: string; publisher: string; barcode: string;
+  id: number; title: string; item_type: string; platform: string; publisher: string; barcode: string;
   release_year: number | null; cover_url: string; photo: string;
   purchase_price: number | null; market_price: number | null;
   market_price_date: string | null; condition: string; notes: string; created_at: string;
 };
 
-export const FIELDS = ["title","platform","publisher","barcode","release_year","cover_url","photo",
+export const FIELDS = ["title","item_type","platform","publisher","barcode","release_year","cover_url","photo",
   "purchase_price","market_price","condition","notes"] as const;
 
 export default db;
 
-const TEXT_FIELDS = ["title","platform","publisher","barcode","cover_url","photo","condition","notes"];
+const TEXT_FIELDS = ["title","item_type","platform","publisher","barcode","cover_url","photo","condition","notes"];
 export function normalize(b: Record<string, unknown>) {
-  return FIELDS.map((f) => (b[f] === "" || b[f] == null ? (TEXT_FIELDS.includes(f) ? "" : null) : b[f]));
+  return FIELDS.map((f) => (b[f] === "" || b[f] == null ? (f === "item_type" ? "game" : TEXT_FIELDS.includes(f) ? "" : null) : b[f]));
 }

@@ -3,17 +3,17 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Game } from "@/lib/db";
 import Scanner from "./Scanner";
-import { PLATFORMS, brandOf, kindOf } from "@/lib/platforms";
+import { ARCADE_SYSTEMS, CABINET_CONDITIONS, ITEM_TYPES, PLATFORMS, brandOfItem, isCabinet, kindOfItem } from "@/lib/platforms";
 
 type Cand = { title: string; platform: string; release_year: number | null; cover_url: string; publisher: string; source: string };
 type F = Record<string, string>;
 
-const empty: F = { title: "", platform: "", publisher: "", barcode: "", release_year: "", cover_url: "", photo: "",
+const empty: F = { title: "", item_type: "game", platform: "", publisher: "", barcode: "", release_year: "", cover_url: "", photo: "",
   purchase_price: "", market_price: "", condition: "", notes: "" };
 const CONDITIONS = ["", "Neuf scellé", "Complet (CIB)", "Boîte sans notice", "Cartouche/disque seul", "Abîmé"];
 
 type Quote = { source: string; label: string; detail?: string; url?: string; values: { label: string; eur: number }[] };
-type PriceRes = { quotes: Quote[]; links: { id: string; label: string; url: string }[]; asked: number };
+type PriceRes = { quotes: Quote[]; links: { id: string; label: string; url: string }[]; asked: number; manual?: boolean };
 type Hist = { price: number; source: string; at: string };
 
 export default function GameForm({ game, history = [] }: { game?: Game; history?: Hist[] }) {
@@ -55,7 +55,7 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
 
   async function estimate() {
     setPricing(true); setPrices(null);
-    const j = await fetch("/api/price?" + new URLSearchParams({ title: f.title, platform: f.platform, barcode: f.barcode, condition: f.condition }))
+    const j = await fetch("/api/price?" + new URLSearchParams({ title: f.title, platform: f.platform, barcode: f.barcode, condition: f.condition, item_type: f.item_type }))
       .then((r) => r.json()).catch(() => null);
     setPricing(false); setPrices(j);
   }
@@ -85,27 +85,39 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
     router.push("/"); router.refresh();
   }
 
+  const cab = isCabinet(f.item_type);
+  const conditions = cab ? ["", ...CABINET_CONDITIONS] : CONDITIONS;
   const img = f.photo || f.cover_url;
   const eurFmt = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
   const gain = f.market_price && f.purchase_price ? Number(f.market_price) - Number(f.purchase_price) : null;
 
   return (
     <div className="page">
-      <h2>{game ? "Modifier le jeu" : "Ajouter un jeu"}</h2>
+      <h2>{game ? "Modifier la fiche" : "Ajouter à la ludothèque"}</h2>
+
+      <div className="seg types" role="group" aria-label="Type d'objet">
+        {ITEM_TYPES.map((t) => (
+          <button key={t.id} className={f.item_type === t.id ? "on" : ""} onClick={() => { set("item_type", t.id); setScanning(false); }}>
+            <span style={{ fontSize: 20 }}>{t.icon}</span> {t.label}
+          </button>
+        ))}
+      </div>
 
       <section className="sec">
-        <h3><i>🔎</i>Identifier le jeu</h3>
+        <h3><i>🔎</i>{cab ? "Identifier la borne" : "Identifier le jeu"}</h3>
         <div className="scanbox">
-          <button className={`btn ${scanning ? "" : "primary"}`} style={{ justifyContent: "center", padding: 12 }} onClick={() => setScanning((s) => !s)}>
-            {scanning ? "✕ Arrêter le scan" : "📷 Scanner le code-barres de la boîte"}
-          </button>
-          {scanning && <Scanner onCode={onCode} />}
+          {!cab && (
+            <button className={`btn ${scanning ? "" : "primary"}`} style={{ justifyContent: "center", padding: 12 }} onClick={() => setScanning((s) => !s)}>
+              {scanning ? "✕ Arrêter le scan" : "📷 Scanner le code-barres de la boîte"}
+            </button>
+          )}
+          {scanning && !cab && <Scanner onCode={onCode} />}
           <div style={{ display: "flex", gap: 8 }}>
-            <input placeholder="…ou chercher par titre (ex : Zelda Ocarina of Time)" value={f.title} onChange={(e) => set("title", e.target.value)}
+            <input placeholder={cab ? "Chercher le jeu de la borne (ex : Street Fighter II)" : "…ou chercher par titre (ex : Zelda Ocarina of Time)"} value={f.title} onChange={(e) => set("title", e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && lookup({ q: f.title, platform: f.platform })} />
             <button className="btn" onClick={() => lookup({ q: f.title, platform: f.platform })} disabled={busy || !f.title}>{busy ? "…" : "Chercher"}</button>
           </div>
-          <span className="hint">Astuce : renseigne la plateforme avant de chercher pour obtenir la bonne jaquette.</span>
+          {!cab && <span className="hint">Astuce : renseigne la plateforme avant de chercher pour obtenir la bonne jaquette.</span>}
           {msg && <span className={/requis|Échec|impossible/.test(msg) ? "err" : "hint"}>{msg}</span>}
           <div className="cands">
             {cands.map((c, i) => (
@@ -126,31 +138,32 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
         <h3><i>📝</i>Informations</h3>
         <div className="split">
           <div className="photo">
-            <div className="frame">{img ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt="" /> : <div className="noimg">🎮</div>}</div>
+            <div className="frame">{img ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt="" /> : <div className="noimg">{f.item_type === "arcade" ? "🕹️" : f.item_type === "demo" ? "📺" : "🎮"}</div>}</div>
             <label className="drop">📸 {f.photo ? "Changer ma photo" : "Ajouter ma photo"}
               <input type="file" accept="image/*" capture="environment" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
             </label>
             {f.photo && <button className="btn small" onClick={() => set("photo", "")}>Retirer ma photo</button>}
           </div>
           <div style={{ display: "grid", gap: 12 }}>
-            <div><label>Titre *</label><input value={f.title} onChange={(e) => set("title", e.target.value)} /></div>
+            <div><label>{cab ? "Nom de la borne / du jeu *" : "Titre *"}</label><input value={f.title} onChange={(e) => set("title", e.target.value)} /></div>
             <div className="row">
               <div>
-                <label>Plateforme</label>
-                <input list="platforms" value={f.platform} onChange={(e) => set("platform", e.target.value)} placeholder="Switch, PS2, Mega Drive…" />
-                <datalist id="platforms">{PLATFORMS.map((p) => <option key={p.name} value={p.name} />)}</datalist>
-                {f.platform && <span className="hint">{brandOf(f.platform)} · {kindOf(f.platform)}</span>}
+                <label>{f.item_type === "arcade" ? "Système / carte" : f.item_type === "demo" ? "Console de la borne" : "Plateforme"}</label>
+                <input list="platforms" value={f.platform} onChange={(e) => set("platform", e.target.value)}
+                  placeholder={f.item_type === "arcade" ? "Neo Geo MVS, CPS-2, JAMMA…" : "Switch, PS2, Mega Drive…"} />
+                <datalist id="platforms">{(f.item_type === "arcade" ? ARCADE_SYSTEMS : PLATFORMS.map((p) => p.name)).map((n) => <option key={n} value={n} />)}</datalist>
+                {(f.platform || cab) && <span className="hint">{brandOfItem(f as any)} · {kindOfItem(f as any)}</span>}
               </div>
-              <div><label>Éditeur</label><input value={f.publisher} onChange={(e) => set("publisher", e.target.value)} placeholder="Nintendo, Capcom…" /></div>
+              <div><label>{cab ? "Constructeur / éditeur" : "Éditeur"}</label><input value={f.publisher} onChange={(e) => set("publisher", e.target.value)} placeholder={cab ? "Taito, Capcom, SNK, Sega…" : "Nintendo, Capcom…"} /></div>
             </div>
             <div className="row">
               <div><label>Année de sortie</label><input value={f.release_year} onChange={(e) => set("release_year", e.target.value)} inputMode="numeric" /></div>
-              <div><label>Code-barres</label><input value={f.barcode} onChange={(e) => set("barcode", e.target.value)} inputMode="numeric" /></div>
+              {!cab ? <div><label>Code-barres</label><input value={f.barcode} onChange={(e) => set("barcode", e.target.value)} inputMode="numeric" /></div> : <div />}
             </div>
             <div>
-              <label>État</label>
+              <label>{cab ? "État de fonctionnement" : "État"}</label>
               <select value={f.condition} onChange={(e) => set("condition", e.target.value)}>
-                {CONDITIONS.map((c) => <option key={c} value={c}>{c || "— Non précisé —"}</option>)}
+                {conditions.map((c) => <option key={c} value={c}>{c || "— Non précisé —"}</option>)}
               </select>
             </div>
           </div>
@@ -168,7 +181,7 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
           </div>
         </div>
         <div>
-          <button className="btn" onClick={estimate} disabled={pricing || !f.title}>{pricing ? "Recherche des prix…" : "💶 Estimer le prix du marché"}</button>
+          <button className="btn" onClick={estimate} disabled={pricing || !f.title}>{pricing ? "Recherche des prix…" : cab ? "🔎 Chercher des annonces" : "💶 Estimer le prix du marché"}</button>
         </div>
         {prices && (
           <div style={{ display: "grid", gap: 8 }}>
@@ -183,9 +196,9 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
                 {q.detail && <span className="hint">{q.detail}</span>}
               </div>
             ))}
-            {!prices.quotes.length && <span className="hint">
+            {!prices.quotes.length && !prices.manual && <span className="hint">
               {prices.asked ? "Aucun prix trouvé par les sources actives." : <>Aucune source de prix automatique active. <a href="/settings">Ajouter une clé PriceCharting ou eBay</a>.</>}</span>}
-            {!!prices.links.length && <div className="hint">Vérifier à la main :{" "}
+            {!!prices.links.length && <div className="hint">{prices.manual ? "Pas de cote automatique pour les bornes, compare les annonces :" : "Vérifier à la main :"}{" "}
               {prices.links.map((l, i) => <span key={l.id}>{i > 0 && " · "}<a href={l.url} target="_blank" rel="noreferrer">{l.label}</a></span>)}</div>}
           </div>
         )}
@@ -197,7 +210,7 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
 
       <section className="sec">
         <h3><i>🗒️</i>Notes</h3>
-        <textarea rows={3} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="Édition, version, défauts, souvenirs…" />
+        <textarea rows={3} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder={cab ? "Dimensions, écran (CRT/LCD), nombre de joueurs, jeux installés, historique…" : "Édition, version, défauts, souvenirs…"} />
       </section>
 
       <div className="actions">

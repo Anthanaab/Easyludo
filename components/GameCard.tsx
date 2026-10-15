@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Game } from "@/lib/db";
-import { BRAND_COLOR, brandOf } from "@/lib/platforms";
+import { BRAND_COLOR, brandOfItem, isCabinet, itemLabel } from "@/lib/platforms";
 
 export const eur = (n: number | null) => (n == null ? "—" : n.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: n % 1 ? 2 : 0 }));
 export const delta = (g: Game) => (g.market_price != null && g.purchase_price != null ? g.market_price - g.purchase_price : null);
@@ -16,8 +16,8 @@ export default function GameCard({ g }: { g: Game }) {
   return (
     <Link href={`/games/${g.id}`} className="card">
       <div className="cover">
-        {img ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={g.title} loading="lazy" /> : <div className="noimg">🎮</div>}
-        {g.platform && <span className="badge" style={{ background: BRAND_COLOR[brandOf(g.platform)] }}>{g.platform}</span>}
+        {img ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={img} alt={g.title} loading="lazy" /> : <div className="noimg">{g.item_type === "arcade" ? "🕹️" : g.item_type === "demo" ? "📺" : "🎮"}</div>}
+        {(g.platform || isCabinet(g.item_type)) && <span className="badge" style={{ background: BRAND_COLOR[brandOfItem(g)] }}>{isCabinet(g.item_type) ? `${itemLabel(g.item_type)}${g.platform ? " · " + g.platform : ""}` : g.platform}</span>}
       </div>
       <div className="info">
         <div className="t">{g.title}</div>

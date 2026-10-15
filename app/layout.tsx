@@ -16,12 +16,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Link href="/" className="logo"><i>🎮</i>EasyLudo</Link>
           {authed && <nav className="nav">
             <Link href="/settings" className="btn">⚙️ <span>Paramètres</span></Link>
-            <Link href="/add" className="btn primary add">+ Ajouter un jeu</Link>
+            <Link href="/add" className="btn primary add">+ Ajouter</Link>
           <LogoutButton />
           </nav>}
         </header>
         <main>{children}</main>
-        {authed && <Link href="/add" className="fab" aria-label="Ajouter un jeu">+</Link>}
+        {authed && <Link href="/add" className="fab" aria-label="Ajouter">+</Link>}
         <footer className="foot">
           Données fournies par <a href="https://www.wikidata.org" target="_blank" rel="noreferrer">Wikidata</a>,{" "}
           <a href="https://rawg.io" target="_blank" rel="noreferrer">RAWG</a>, IGDB et Libretro

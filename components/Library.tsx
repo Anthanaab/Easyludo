@@ -2,17 +2,18 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Game } from "@/lib/db";
-import { BRAND_COLOR, brandOf, kindOf } from "@/lib/platforms";
+import { BRAND_COLOR, ITEM_TYPES, brandOfItem, itemLabel, kindOfItem } from "@/lib/platforms";
 import GameCard, { Delta, eur } from "./GameCard";
 
-type By = "brand" | "kind" | "platform" | "publisher";
+type By = "type" | "brand" | "kind" | "platform" | "publisher";
 type GroupBy = "" | By;
-const LABEL: Record<By, string> = { brand: "Marque", kind: "Type de console", platform: "Console", publisher: "Éditeur" };
-const keyOf = (g: Game, by: By) => (by === "brand" ? brandOf(g.platform) : by === "kind" ? kindOf(g.platform) : g[by] || "Non renseigné");
+const LABEL: Record<By, string> = { type: "Type d'objet", brand: "Marque", kind: "Type de console", platform: "Console", publisher: "Éditeur" };
+const keyOf = (g: Game, by: By) =>
+  by === "type" ? itemLabel(g.item_type) : by === "brand" ? brandOfItem(g) : by === "kind" ? kindOfItem(g) : g[by] || "Non renseigné";
 
 export default function Library({ games }: { games: Game[] }) {
   const [q, setQ] = useState("");
-  const [f, setF] = useState<Record<By, string>>({ brand: "", kind: "", platform: "", publisher: "" });
+  const [f, setF] = useState<Record<By, string>>({ type: "", brand: "", kind: "", platform: "", publisher: "" });
   const [sort, setSort] = useState("recent");
   const [groupBy, setGroupBy] = useState<GroupBy>("brand");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -64,7 +65,7 @@ export default function Library({ games }: { games: Game[] }) {
   return (
     <>
       <div className="stats">
-        <div className="stat"><b>{shown.length}</b><span>jeu{shown.length > 1 ? "x" : ""}{shown.length !== games.length && ` sur ${games.length}`}</span></div>
+        <div className="stat"><b>{shown.length}</b><span>élément{shown.length > 1 ? "s" : ""}{shown.length !== games.length && ` sur ${games.length}`}</span></div>
         <div className="stat"><b>{eur(spent)}</b><span>total payé</span></div>
         <div className="stat"><b>{eur(value)}</b><span>valeur du marché</span></div>
         <div className="stat"><b className={gain >= 0 ? "good" : "bad"}>{gain >= 0 ? "+" : "−"}{eur(Math.abs(gain))}</b><span>plus-value</span></div>
@@ -100,7 +101,7 @@ export default function Library({ games }: { games: Game[] }) {
       {activeFilters.length > 0 && (
         <div className="chips">
           {activeFilters.map((k) => <button key={k} className="chip" onClick={() => setF({ ...f, [k]: "" })}>{LABEL[k]} : {f[k]} ✕</button>)}
-          <button className="chip" style={{ background: "var(--soft)", color: "var(--muted)" }} onClick={() => setF({ brand: "", kind: "", platform: "", publisher: "" })}>Tout effacer</button>
+          <button className="chip" style={{ background: "var(--soft)", color: "var(--muted)" }} onClick={() => setF({ type: "", brand: "", kind: "", platform: "", publisher: "" })}>Tout effacer</button>
         </div>
       )}
 
