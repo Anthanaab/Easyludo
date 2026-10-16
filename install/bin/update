@@ -49,8 +49,27 @@ Unit=easyludo-update.service
 [Install]
 WantedBy=multi-user.target
 UNIT
+  # Même principe pour la configuration du HTTPS depuis l'interface
+  cat > /etc/systemd/system/easyludo-https.service <<'UNIT'
+[Unit]
+Description=Configuration HTTPS d'EasyLudo (demandée depuis l'interface)
+[Service]
+Type=oneshot
+ExecStartPre=/bin/rm -f /var/lib/easyludo/data/https.request
+ExecStart=/usr/local/bin/easyludo-https --from-web
+TimeoutStartSec=600
+UNIT
+  cat > /etc/systemd/system/easyludo-https.path <<'UNIT'
+[Unit]
+Description=Surveille les demandes de configuration HTTPS d'EasyLudo
+[Path]
+PathExists=/var/lib/easyludo/data/https.request
+Unit=easyludo-https.service
+[Install]
+WantedBy=multi-user.target
+UNIT
   systemctl daemon-reload
-  systemctl enable --now easyludo-update.path >/dev/null 2>&1
+  systemctl enable --now easyludo-update.path easyludo-https.path >/dev/null 2>&1
 }
 
 # HTTPS auto-signé (Caddy) : une erreur ici ne doit jamais faire échouer une mise à jour

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { SOURCES } from "@/lib/sourcesMeta";
 import UpdatePanel from "./UpdatePanel";
+import HttpsPanel from "./HttpsPanel";
 
 type State = { id: string; enabled: boolean; keysOk: boolean; keys: { name: string; set: boolean }[] };
 
@@ -87,6 +88,7 @@ export default function SettingsForm() {
         <div><a className="btn" href="/api/export" download>⬇ Exporter la collection (CSV)</a></div>
       </section>
       <UpdatePanel />
+      <HttpsPanel />
       <section className="sec">
         <h3>🔒 Sécurité</h3>
         <div className="row">

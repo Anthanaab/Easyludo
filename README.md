@@ -59,7 +59,11 @@ si l'adresse change (DHCP), `update` (ou `easyludo-https`) le régénère.
 
 Sans HTTPS, le bouton **📸 Photographier le code-barres** fonctionne quand même : il ouvre l'appareil photo du téléphone et lit le code sur la photo.
 
-Conteneur installé avant cette fonction : après une mise à jour, lance une fois `pct exec <ID> -- update --setup`.
+**Depuis l'interface** : ⚙️ Paramètres → **🔒 HTTPS** affiche l'état et l'expiration du certificat, active ou régénère le HTTPS en un clic,
+et propose le certificat à télécharger pour supprimer l'avertissement du navigateur sur un appareil.
+
+Conteneur installé avant cette fonction : après la mise à jour, va dans Paramètres → Mise à jour → **Réappliquer la configuration**
+(ou, en ligne de commande, `pct exec <ID> -- update --setup`), puis utilise le panneau HTTPS.
 
 > Pour un vrai certificat de confiance (sans avertissement), place l'app derrière un reverse proxy avec un nom de domaine
 > (Nginx Proxy Manager, Caddy, Traefik, tunnel Cloudflare…) vers `http://IP:3000`.
