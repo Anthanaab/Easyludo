@@ -51,10 +51,8 @@ export default function UpdatePanel() {
     return () => clearInterval(t);
   }, [phase]);
 
-  async function start(reapply = false) {
-    if (!confirm(reapply
-      ? "Réappliquer la configuration ? Les services et scripts du conteneur sont réinstallés, l'application redémarre brièvement (une sauvegarde est faite avant)."
-      : "Mettre à jour EasyLudo ? L'application sera indisponible quelques minutes (une sauvegarde est faite avant).")) return;
+  async function start() {
+    if (!confirm("Mettre à jour EasyLudo ? L'application sera indisponible quelques minutes (une sauvegarde est faite avant).")) return;
     setErr("");
     baseline.current = info?.status?.at ?? null;
     const r = await fetch("/api/update", { method: "POST" });
@@ -105,10 +103,9 @@ export default function UpdatePanel() {
 
       {!running && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn primary" onClick={() => start(false)} disabled={!info.updateAvailable}>
+          <button className="btn primary" onClick={start} disabled={!info.updateAvailable}>
             {info.updateAvailable ? "Mettre à jour maintenant" : "✓ À jour"}
           </button>
-          <button className="btn small" onClick={() => start(true)} title="Relance la mise à jour même si la version est à jour : réinstalle les services (mise à jour, HTTPS) et les scripts du conteneur" disabled={info.updateAvailable}>Réappliquer la configuration</button>
           <button className="btn small" onClick={() => load(true)} disabled={checking}>{checking ? "Vérification…" : "↻ Vérifier"}</button>
           {checkedAt && !checking && <span className="hint">Vérifié à {checkedAt} : {info.updateAvailable ? "nouvelle version disponible" : "aucune nouvelle version"}</span>}
           <span className="hint">Une sauvegarde est faite avant ; retour automatique à la version précédente si la compilation échoue.</span>

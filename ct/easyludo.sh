@@ -112,10 +112,9 @@ IP=$(pct exec "$CTID" -- hostname -I | awk '{print $1}')
 CTID_CREATED=""
 echo
 echo "${C_G}${C_B}✔ $APP est installé !${C_0}"
-echo "  Adresse (HTTPS)    : ${C_B}https://${IP}${C_0}   <- a utiliser (scan code-barres, camera)"
-echo "  Adresse (HTTP)     : http://${IP}:${PORT}   (sans camera en direct)"
+echo "  Adresse            : ${C_B}https://${IP}${C_0}   (HTTPS uniquement : le port ${PORT} n'est plus accessible)"
 echo "  ${C_Y}Au premier acces, le navigateur affiche un avertissement : c'est normal (certificat auto-signe).${C_0}"
-echo "  ${C_Y}Clique sur « Avance » puis « Continuer ».${C_0}"
+echo "  ${C_Y}Clique sur « Avance » puis « Continuer ». Un certificat personnel peut etre importe ensuite (Parametres).${C_0}"
 echo "  Conteneur          : $CTID ($HN)"
 echo "  Mot de passe root  : $ROOTPW   (note-le ; accès par « pct enter $CTID » sans mot de passe)"
 if [ -z "$APP_PW" ]; then echo "  Premier accès      : crée le mot de passe de l'application dans le navigateur, ${C_B}tout de suite${C_0}."

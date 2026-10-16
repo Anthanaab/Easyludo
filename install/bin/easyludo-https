@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# HTTPS auto-signé : Caddy écoute sur 443 (et redirige le port 80), puis relaie vers l'application.
-#   easyludo-https             configure si besoin (idempotent) ; régénère le certificat si l'IP/le nom change ou s'il expire bientôt
-#   easyludo-https --force     régénère le certificat dans tous les cas
-#   easyludo-https --from-web  idem --force, lancé depuis l'interface (écrit son état pour la page Paramètres)
-# Les navigateurs affichent un avertissement la première fois (certificat auto-signé) : « Avancé » → « Continuer ».
+# HTTPS pour EasyLudo : Caddy écoute sur 443 (le port 80 redirige) et relaie vers l'application, qui n'écoute plus
+# que sur 127.0.0.1 : le site n'est accessible qu'en HTTPS.
+#   easyludo-https                 configure si besoin (idempotent). Un certificat importé est conservé.
+#   easyludo-https --selfsigned    (re)génère un certificat auto-signé et l'utilise
+#   easyludo-https --from-web      lancé depuis l'interface : importe le certificat déposé (s'il y en a un), sinon auto-signé
+# Certificat auto-signé : le navigateur affiche un avertissement la première fois (« Avancé » → « Continuer »).
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 [ "$(id -u)" -eq 0 ] || { echo "À lancer en root."; exit 1; }
@@ -12,8 +13,9 @@ MODE="${1:-}"
 TLS=/etc/easyludo/tls
 DATA=/var/lib/easyludo/data
 STATUS="$DATA/https-status.json"
-FORCE=0; FINAL=0
-case "$MODE" in --force|--from-web) FORCE=1;; esac
+IMPORT="$DATA/tls-import"
+DROPIN_DIR=/etc/systemd/system/easyludo.service.d
+FINAL=0
 
 write_status() { # état message
   [ "$MODE" = "--from-web" ] || return 0
@@ -21,9 +23,20 @@ write_status() { # état message
   printf '{"state":"%s","message":"%s","at":"%s"}\n' "$1" "$2" "$(date -Is)" > "$tmp"
   chown easyludo:easyludo "$tmp"; chmod 644 "$tmp"; mv -f "$tmp" "$STATUS"
 }
-on_exit() { local rc=$?; if [ $rc -ne 0 ] && [ "$FINAL" -eq 0 ]; then write_status error "Échec de la configuration du HTTPS (voir le journal : journalctl -u easyludo-https)"; fi; }
+fail() { echo "Erreur : $1" >&2; FINAL=1; write_status error "$1"; exit 1; }
+on_exit() {
+  local rc=$?
+  rm -rf "$IMPORT"   # la clé privée déposée par l'interface ne reste jamais sur le disque
+  if [ $rc -ne 0 ] && [ "$FINAL" -eq 0 ]; then write_status error "Échec de la configuration du HTTPS (journal : journalctl -u easyludo-https)"; fi
+}
 trap on_exit EXIT
 
+# Action demandée
+case "$MODE" in
+  --selfsigned|--force) ACTION=selfsigned ;;
+  --from-web) if [ -s "$IMPORT/cert.pem" ] && [ -s "$IMPORT/key.pem" ]; then ACTION=import; else ACTION=selfsigned; fi ;;
+  *) ACTION=ensure ;;
+esac
 write_status running "Préparation…"
 APP_PORT=$(sed -n 's/^PORT=//p' /etc/easyludo.env 2>/dev/null | tail -1)
 APP_PORT=${APP_PORT:-3000}
@@ -34,36 +47,52 @@ if ! command -v caddy >/dev/null; then
   apt-get update -qq && apt-get install -y -qq caddy >/dev/null
 fi
 mkdir -p "$TLS"; chmod 755 /etc/easyludo "$TLS"
+CURRENT=$(cat "$TLS/mode" 2>/dev/null || echo selfsigned)
 
-# Le certificat couvre le nom d'hôte et toutes les adresses IP actuelles du conteneur.
-# "v2" = profil du certificat : le changer force la régénération.
-write_status running "Génération du certificat…"
-IPS=$(hostname -I | tr -s ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')
-STAMP="v2|$(hostname)|$IPS"
-EXPIRING=0
-if [ -s "$TLS/cert.pem" ] && ! openssl x509 -checkend 2592000 -noout -in "$TLS/cert.pem" >/dev/null 2>&1; then EXPIRING=1; fi
-if [ "$FORCE" -eq 1 ] || [ "$EXPIRING" -eq 1 ] || [ ! -s "$TLS/cert.pem" ] || [ "$(cat "$TLS/stamp" 2>/dev/null || true)" != "$STAMP" ]; then
-  CNF=$(mktemp)
-  {
-    echo "[req]"; echo "distinguished_name=dn"; echo "x509_extensions=v3"; echo "prompt=no"
-    echo "[dn]"; echo "CN=EasyLudo"
-    # CA:TRUE : le certificat peut être installé comme « autorité de confiance » sur un téléphone ou un ordinateur
-    echo "[v3]"; echo "basicConstraints=critical,CA:TRUE"; echo "keyUsage=digitalSignature,keyEncipherment,keyCertSign"; echo "extendedKeyUsage=serverAuth"
-    echo "subjectAltName=@san"
-    echo "[san]"
-    n=1; echo "DNS.$n=$(hostname)"; n=$((n+1)); echo "DNS.$n=localhost"; n=$((n+1)); echo "DNS.$n=easyludo.local"
-    i=1; echo "IP.$i=127.0.0.1"
-    for ip in $IPS; do i=$((i+1)); echo "IP.$i=$ip"; done
-  } > "$CNF"
-  # 800 jours : au-delà de 825 jours, iOS refuse les certificats installés manuellement
-  openssl req -x509 -newkey rsa:2048 -nodes -days 800 -sha256 -config "$CNF" \
-    -keyout "$TLS/key.pem" -out "$TLS/cert.pem" 2>/dev/null
-  rm -f "$CNF"
-  echo "$STAMP" > "$TLS/stamp"
-  echo "Certificat auto-signé généré pour : $(hostname) $IPS"
+# ---------- Certificat importé ----------
+if [ "$ACTION" = import ]; then
+  write_status running "Vérification du certificat importé…"
+  openssl x509 -in "$IMPORT/cert.pem" -noout >/dev/null 2>&1 || fail "Certificat illisible (format PEM attendu)"
+  openssl x509 -in "$IMPORT/cert.pem" -noout -checkend 0 >/dev/null 2>&1 || fail "Ce certificat est expiré"
+  openssl pkey -in "$IMPORT/key.pem" -passin pass: -noout >/dev/null 2>&1 || fail "Clé privée illisible ou protégée par mot de passe (non supporté)"
+  C=$(openssl x509 -in "$IMPORT/cert.pem" -noout -pubkey | openssl sha256)
+  K=$(openssl pkey -in "$IMPORT/key.pem" -passin pass: -pubout | openssl sha256)
+  [ "$C" = "$K" ] || fail "La clé privée ne correspond pas au certificat"
+  install -m 644 "$IMPORT/cert.pem" "$TLS/cert.pem"
+  install -m 640 "$IMPORT/key.pem" "$TLS/key.pem"
+  echo custom > "$TLS/mode"; rm -f "$TLS/stamp"
+  echo "Certificat importé."
+# ---------- Certificat auto-signé ----------
+elif [ "$ACTION" = selfsigned ] || [ "$CURRENT" != custom ]; then
+  write_status running "Génération du certificat auto-signé…"
+  IPS=$(hostname -I | tr -s ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')
+  STAMP="v2|$(hostname)|$IPS"   # "v2" = profil du certificat : le changer force la régénération
+  EXPIRING=0
+  if [ -s "$TLS/cert.pem" ] && ! openssl x509 -checkend 2592000 -noout -in "$TLS/cert.pem" >/dev/null 2>&1; then EXPIRING=1; fi
+  if [ "$ACTION" = selfsigned ] || [ "$EXPIRING" -eq 1 ] || [ ! -s "$TLS/cert.pem" ] || [ "$(cat "$TLS/stamp" 2>/dev/null || true)" != "$STAMP" ] || [ "$CURRENT" = custom ]; then
+    CNF=$(mktemp)
+    {
+      echo "[req]"; echo "distinguished_name=dn"; echo "x509_extensions=v3"; echo "prompt=no"
+      echo "[dn]"; echo "CN=EasyLudo"
+      # CA:TRUE : le certificat peut être installé comme « autorité de confiance » sur un téléphone ou un ordinateur
+      echo "[v3]"; echo "basicConstraints=critical,CA:TRUE"; echo "keyUsage=digitalSignature,keyEncipherment,keyCertSign"; echo "extendedKeyUsage=serverAuth"
+      echo "subjectAltName=@san"
+      echo "[san]"
+      n=1; echo "DNS.$n=$(hostname)"; n=$((n+1)); echo "DNS.$n=localhost"; n=$((n+1)); echo "DNS.$n=easyludo.local"
+      i=1; echo "IP.$i=127.0.0.1"
+      for ip in $IPS; do i=$((i+1)); echo "IP.$i=$ip"; done
+    } > "$CNF"
+    # 800 jours : au-delà de 825 jours, iOS refuse les certificats installés manuellement
+    openssl req -x509 -newkey rsa:2048 -nodes -days 800 -sha256 -config "$CNF" \
+      -keyout "$TLS/key.pem" -out "$TLS/cert.pem" 2>/dev/null
+    rm -f "$CNF"
+    echo "$STAMP" > "$TLS/stamp"; echo selfsigned > "$TLS/mode"
+    echo "Certificat auto-signé généré pour : $(hostname) $IPS"
+  fi
 fi
 chown root:caddy "$TLS/key.pem" "$TLS/cert.pem"; chmod 640 "$TLS/key.pem"; chmod 644 "$TLS/cert.pem"
 
+# ---------- Caddy ----------
 write_status running "Configuration de Caddy…"
 cat > /etc/caddy/Caddyfile <<CADDY
 {
@@ -81,11 +110,41 @@ cat > /etc/caddy/Caddyfile <<CADDY
 	reverse_proxy 127.0.0.1:$APP_PORT
 }
 CADDY
-
 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 systemctl enable caddy >/dev/null 2>&1
 systemctl restart caddy
 sleep 1
-systemctl is-active --quiet caddy || { journalctl -u caddy -n 15 --no-pager || true; exit 1; }
-echo "HTTPS actif : https://$(hostname -I | awk '{print $1}')"
-FINAL=1; write_status ok "HTTPS actif"
+systemctl is-active --quiet caddy || { journalctl -u caddy -n 15 --no-pager || true; fail "Caddy n'a pas démarré (certificat ou clé invalide ?)"; }
+
+https_ok() { # attend que le site réponde en HTTPS via Caddy
+  local i; for i in $(seq 1 25); do
+    [ "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/login || true)" = 200 ] && return 0
+    sleep 1
+  done; return 1
+}
+
+# ---------- Site accessible uniquement en HTTPS ----------
+# Garde-fou : l'application ne passe en « localhost seulement » qu'après avoir vérifié que le HTTPS fonctionne,
+# avec retour arrière automatique en cas de problème (pour ne jamais se retrouver enfermé dehors).
+write_status running "Vérification du HTTPS…"
+https_ok || fail "Le HTTPS ne répond pas : l'accès HTTP est conservé"
+mkdir -p "$DROPIN_DIR"
+NEWDROP=$(mktemp)
+cat > "$NEWDROP" <<'UNIT'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/node /opt/easyludo/node_modules/next/dist/bin/next start -p ${PORT} -H 127.0.0.1
+UNIT
+if ! cmp -s "$NEWDROP" "$DROPIN_DIR/https-only.conf"; then
+  write_status running "Fermeture de l'accès HTTP direct…"
+  install -m 644 "$NEWDROP" "$DROPIN_DIR/https-only.conf"
+  systemctl daemon-reload
+  systemctl restart easyludo
+  if ! https_ok; then
+    rm -f "$DROPIN_DIR/https-only.conf"; systemctl daemon-reload; systemctl restart easyludo
+    rm -f "$NEWDROP"; fail "Le HTTPS ne répondait plus après la fermeture du HTTP : retour à l'état précédent"
+  fi
+fi
+rm -f "$NEWDROP"
+echo "HTTPS actif : https://$(hostname -I | awk '{print $1}')  (accès HTTP direct fermé)"
+FINAL=1; write_status ok "HTTPS actif : le site n'est plus accessible qu'en HTTPS"

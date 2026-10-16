@@ -105,7 +105,7 @@ UNIT
 cat > /etc/motd <<MOTD
 
   🎮 EasyLudo — ludothèque
-  Application   : http://$(hostname -I | awk '{print $1}'):$PORT
+  Application   : https://$(hostname -I | awk '{print $1}')   (HTTPS uniquement)
   Mise à jour   : update
   Sauvegarde    : easyludo-backup   (archives : /var/lib/easyludo/backups)
   Restauration  : easyludo-restore <archive>
@@ -119,8 +119,10 @@ systemctl enable --now easyludo easyludo-backup.timer >/dev/null 2>&1
 /usr/local/bin/update --setup   # active aussi la mise à jour depuis l'interface
 
 step "Vérification"
-for _ in $(seq 1 30); do
-  code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/login" || true)
+# Une fois le HTTPS actif, l'application n'écoute plus que sur 127.0.0.1 : on teste via Caddy (443), sinon en direct
+for _ in $(seq 1 40); do
+  code=$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1/login" || true)
+  [ "$code" = 200 ] || code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/login" || true)
   [ "$code" = 200 ] && { echo "L'application répond (HTTP 200)."; exit 0; }
   sleep 1
 done

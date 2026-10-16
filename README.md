@@ -14,7 +14,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easyludo/main/
 
 Le script crée un conteneur Debian 12 sans privilèges, y installe Node 22, compile l'application et la lance
 comme service systemd. Il propose des réglages par défaut (2 CPU, 2 Go de RAM, 8 Go de disque, DHCP, port 3000)
-ou avancés. À la fin, il affiche l'adresse `http://IP:3000`.
+ou avancés. À la fin, il affiche l'adresse `https://IP`.
 
 **Au premier accès, crée tout de suite le mot de passe de l'application** (ou fournis-le à l'installation, voir plus bas).
 
@@ -48,25 +48,23 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easyludo/main/
 - **Clés API et mot de passe** : `/etc/easyludo.env`, puis `systemctl restart easyludo`.
   Les clés peuvent aussi se saisir dans l'app (⚙️ Paramètres).
 
-### HTTPS (nécessaire pour le scan caméra en direct)
+### HTTPS (obligatoire)
 
-L'installation active automatiquement le **HTTPS avec un certificat auto-signé** (Caddy, port 443) : utilise `https://IP` au lieu de `http://IP:3000`.
-Le port 80 redirige vers le HTTPS, et l'ancienne adresse `http://IP:3000` reste disponible.
+Le site n'est accessible **qu'en HTTPS** : Caddy écoute sur le port 443 (le port 80 redirige) et l'application n'écoute plus que sur `127.0.0.1`.
+Utilise `https://IP` (l'ancienne adresse `http://IP:3000` n'existe plus). Par défaut, le certificat est **auto-signé** et créé à l'installation :
+le navigateur affiche un avertissement la première fois (« Avancé » → « Continuer »), puis la caméra en direct fonctionne.
 
-Comme le certificat n'est pas émis par une autorité reconnue, **le navigateur affiche un avertissement la première fois** :
-« Avancé » → « Continuer vers le site ». Ensuite la caméra peut être autorisée. Le certificat couvre le nom du conteneur et ses adresses IP ;
-si l'adresse change (DHCP), `update` (ou `easyludo-https`) le régénère.
+**Depuis l'interface** : ⚙️ Paramètres → **🔒 HTTPS**
+- **🔐 Certificat auto-signé** : (ré)génère le certificat (valable 800 jours, pour le nom et les adresses IP du conteneur). Sur un conteneur installé
+  avant cette fonction, ce bouton installe aussi les services nécessaires.
+- **📥 Importer mon certificat** : certificat (PEM, chaîne incluse si besoin) + clé privée sans mot de passe. Le certificat doit couvrir le nom ou
+  l'adresse utilisés pour ouvrir le site. L'import n'est possible que depuis la version HTTPS du site. Un certificat importé est conservé aux mises à jour.
+- **⬇ Télécharger le certificat** : pour l'installer comme certificat de confiance sur un appareil et supprimer l'avertissement (instructions dans le panneau).
 
-Sans HTTPS, le bouton **📸 Photographier le code-barres** fonctionne quand même : il ouvre l'appareil photo du téléphone et lit le code sur la photo.
+Sécurité : l'application ne bascule en « HTTPS seulement » qu'après avoir vérifié que Caddy répond, avec retour automatique à l'état précédent en cas de problème.
+Si besoin de revenir en HTTP : `pct enter <ID>` puis `rm /etc/systemd/system/easyludo.service.d/https-only.conf && systemctl daemon-reload && systemctl restart easyludo`.
 
-**Depuis l'interface** : ⚙️ Paramètres → **🔒 HTTPS** affiche l'état et l'expiration du certificat, active ou régénère le HTTPS en un clic,
-et propose le certificat à télécharger pour supprimer l'avertissement du navigateur sur un appareil.
-
-Conteneur installé avant cette fonction : après la mise à jour, va dans Paramètres → Mise à jour → **Réappliquer la configuration**
-(ou, en ligne de commande, `pct exec <ID> -- update --setup`), puis utilise le panneau HTTPS.
-
-> Pour un vrai certificat de confiance (sans avertissement), place l'app derrière un reverse proxy avec un nom de domaine
-> (Nginx Proxy Manager, Caddy, Traefik, tunnel Cloudflare…) vers `http://IP:3000`.
+Sans caméra en direct (ou en cas de doute), le bouton **📸 Photographier le code-barres** lit le code sur une photo prise avec l'appareil photo du téléphone.
 
 ## Développement local
 
