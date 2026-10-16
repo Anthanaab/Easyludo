@@ -48,11 +48,21 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Anthanaab/Easyludo/main/
 - **Clés API et mot de passe** : `/etc/easyludo.env`, puis `systemctl restart easyludo`.
   Les clés peuvent aussi se saisir dans l'app (⚙️ Paramètres).
 
-### HTTPS (nécessaire pour scanner les codes-barres)
+### HTTPS (nécessaire pour le scan caméra en direct)
 
-Les navigateurs n'autorisent la caméra qu'en HTTPS. Place l'application derrière ton reverse proxy habituel
-(Nginx Proxy Manager, Caddy, Traefik, tunnel Cloudflare…) vers `http://IP:3000`.
-Sans HTTPS, tout fonctionne sauf le scan caméra (la saisie du code-barres et la recherche par titre restent possibles).
+L'installation active automatiquement le **HTTPS avec un certificat auto-signé** (Caddy, port 443) : utilise `https://IP` au lieu de `http://IP:3000`.
+Le port 80 redirige vers le HTTPS, et l'ancienne adresse `http://IP:3000` reste disponible.
+
+Comme le certificat n'est pas émis par une autorité reconnue, **le navigateur affiche un avertissement la première fois** :
+« Avancé » → « Continuer vers le site ». Ensuite la caméra peut être autorisée. Le certificat couvre le nom du conteneur et ses adresses IP ;
+si l'adresse change (DHCP), `update` (ou `easyludo-https`) le régénère.
+
+Sans HTTPS, le bouton **📸 Photographier le code-barres** fonctionne quand même : il ouvre l'appareil photo du téléphone et lit le code sur la photo.
+
+Conteneur installé avant cette fonction : après une mise à jour, lance une fois `pct exec <ID> -- update --setup`.
+
+> Pour un vrai certificat de confiance (sans avertissement), place l'app derrière un reverse proxy avec un nom de domaine
+> (Nginx Proxy Manager, Caddy, Traefik, tunnel Cloudflare…) vers `http://IP:3000`.
 
 ## Développement local
 

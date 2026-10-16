@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# HTTPS auto-signé : Caddy écoute sur 443 (et redirige le port 80), puis relaie vers l'application.
+# Idempotent : le certificat est régénéré si l'adresse IP ou le nom du conteneur changent.
+# Les navigateurs afficheront un avertissement la première fois (certificat non émis par une autorité reconnue) :
+# « Avancé » → « Continuer » ; ensuite la caméra est utilisable.
+set -euo pipefail
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+[ "$(id -u)" -eq 0 ] || { echo "À lancer en root."; exit 1; }
+
+TLS=/etc/easyludo/tls
+APP_PORT=$(sed -n 's/^PORT=//p' /etc/easyludo.env 2>/dev/null | tail -1)
+APP_PORT=${APP_PORT:-3000}
+
+if ! command -v caddy >/dev/null; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq && apt-get install -y -qq caddy >/dev/null
+fi
+mkdir -p "$TLS"
+
+# Le certificat couvre le nom d'hôte et toutes les adresses IP actuelles du conteneur
+IPS=$(hostname -I | tr -s ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ')
+STAMP="$(hostname)|$IPS"
+if [ ! -s "$TLS/cert.pem" ] || [ "$(cat "$TLS/stamp" 2>/dev/null || true)" != "$STAMP" ]; then
+  CNF=$(mktemp)
+  {
+    echo "[req]"; echo "distinguished_name=dn"; echo "x509_extensions=v3"; echo "prompt=no"
+    echo "[dn]"; echo "CN=EasyLudo"
+    echo "[v3]"; echo "basicConstraints=CA:FALSE"; echo "keyUsage=digitalSignature,keyEncipherment"; echo "extendedKeyUsage=serverAuth"
+    echo "subjectAltName=@san"
+    echo "[san]"
+    n=1; echo "DNS.$n=$(hostname)"; n=$((n+1)); echo "DNS.$n=localhost"; n=$((n+1)); echo "DNS.$n=easyludo.local"
+    i=1; echo "IP.$i=127.0.0.1"
+    for ip in $IPS; do i=$((i+1)); echo "IP.$i=$ip"; done
+  } > "$CNF"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -sha256 -config "$CNF" \
+    -keyout "$TLS/key.pem" -out "$TLS/cert.pem" 2>/dev/null
+  rm -f "$CNF"
+  echo "$STAMP" > "$TLS/stamp"
+  echo "Certificat auto-signé généré pour : $(hostname) $IPS"
+fi
+chown root:caddy "$TLS/key.pem" "$TLS/cert.pem"; chmod 640 "$TLS/key.pem"; chmod 644 "$TLS/cert.pem"
+
+cat > /etc/caddy/Caddyfile <<CADDY
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}
+
+:443 {
+	tls $TLS/cert.pem $TLS/key.pem
+	encode gzip
+	reverse_proxy 127.0.0.1:$APP_PORT
+}
+CADDY
+
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
+systemctl enable caddy >/dev/null 2>&1
+systemctl restart caddy
+echo "HTTPS actif : https://$(hostname -I | awk '{print $1}')"

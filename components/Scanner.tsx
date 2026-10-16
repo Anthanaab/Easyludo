@@ -15,7 +15,7 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
         if (res && !done) { done = true; onCode(res.getText()); }
       })
       .then((c) => { stop = () => c.stop(); })
-      .catch(() => setError("Caméra inaccessible (HTTPS ou autorisation requise)."));
+      .catch(() => setError("Caméra inaccessible (autorisation refusée ou HTTPS requis). Utilise plutôt « Photographier le code-barres »."));
     return () => stop?.();
   }, [onCode]);
 

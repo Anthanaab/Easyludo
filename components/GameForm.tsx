@@ -1,8 +1,9 @@
 "use client";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Game } from "@/lib/db";
 import Scanner from "./Scanner";
+import PhotoScan from "./PhotoScan";
 import { ARCADE_SYSTEMS, CABINET_CONDITIONS, ITEM_TYPES, PLATFORMS, brandOfItem, isCabinet, kindOfItem } from "@/lib/platforms";
 
 type Cand = { title: string; platform: string; release_year: number | null; cover_url: string; publisher: string; source: string };
@@ -27,6 +28,9 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
   const [prices, setPrices] = useState<PriceRes | null>(null);
   const [priceSource, setPriceSource] = useState("");
   const [pricing, setPricing] = useState(false);
+  // Le flux caméra en direct n'est autorisé qu'en HTTPS (ou localhost) ; la photo fonctionne partout
+  const [secure, setSecure] = useState(true);
+  useEffect(() => setSecure(window.isSecureContext), []);
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
 
   async function lookup(params: Record<string, string>) {
@@ -107,11 +111,17 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
         <h3><i>🔎</i>{cab ? "Identifier la borne" : "Identifier le jeu"}</h3>
         <div className="scanbox">
           {!cab && (
-            <button className={`btn ${scanning ? "" : "primary"}`} style={{ justifyContent: "center", padding: 12 }} onClick={() => setScanning((s) => !s)}>
-              {scanning ? "✕ Arrêter le scan" : "📷 Scanner le code-barres de la boîte"}
-            </button>
+            <div style={{ display: "grid", gap: 8 }}>
+              {secure && (
+                <button className={`btn ${scanning ? "" : "primary"}`} style={{ justifyContent: "center", padding: 12 }} onClick={() => setScanning((s) => !s)}>
+                  {scanning ? "✕ Arrêter le scan" : "📷 Scanner le code-barres en direct"}
+                </button>
+              )}
+              {scanning && secure && <Scanner onCode={onCode} />}
+              {!scanning && <PhotoScan onCode={onCode} primary={!secure} />}
+              {!secure && <span className="hint">Le scan en direct demande une connexion HTTPS, non disponible ici : la photo du code-barres fonctionne dans tous les cas.</span>}
+            </div>
           )}
-          {scanning && !cab && <Scanner onCode={onCode} />}
           <div style={{ display: "flex", gap: 8 }}>
             <input placeholder={cab ? "Chercher le jeu de la borne (ex : Street Fighter II)" : "…ou chercher par titre (ex : Zelda Ocarina of Time)"} value={f.title} onChange={(e) => set("title", e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && lookup({ q: f.title, platform: f.platform })} />

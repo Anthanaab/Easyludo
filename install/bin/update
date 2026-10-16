@@ -2,7 +2,7 @@
 # Met EasyLudo à jour depuis GitHub (sauvegarde avant, retour arrière si la compilation échoue).
 #   update            mise à jour manuelle
 #   update --from-web lancé par l'interface (via easyludo-update.service)
-#   update --setup    réinstalle les scripts et l'intégration systemd, sans mise à jour
+#   update --setup    réinstalle les scripts, l'intégration systemd et le HTTPS, sans mise à jour
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin   # pct exec fournit un PATH minimal
 [ "$(id -u)" -eq 0 ] || { echo "À lancer en root."; exit 1; }
@@ -53,12 +53,15 @@ UNIT
   systemctl enable --now easyludo-update.path >/dev/null 2>&1
 }
 
+# HTTPS auto-signé (Caddy) : une erreur ici ne doit jamais faire échouer une mise à jour
+ensure_https() { /usr/local/bin/easyludo-https || echo "Avertissement : le HTTPS n'a pas pu être configuré (relance : easyludo-https)."; }
+
 cd /opt/easyludo
 as() { runuser -u easyludo -- env HOME=/var/lib/easyludo NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=1536 "$@"; }
 build() { as bash -c 'cd /opt/easyludo && npm ci --no-audit --no-fund && npm run build'; }
 
 ensure_web_update
-if [ "$MODE" = "--setup" ]; then refresh_scripts; FINAL=1; exit 0; fi
+if [ "$MODE" = "--setup" ]; then refresh_scripts; ensure_https; FINAL=1; exit 0; fi
 
 install -o easyludo -g easyludo -m 644 /dev/null "$LOG"
 exec > >(tee "$LOG") 2>&1
@@ -70,7 +73,7 @@ write_status running "Recherche de la dernière version…"
 as git fetch --quiet --depth 1 origin "$EASYLUDO_BRANCH"
 NEW=$(as git rev-parse FETCH_HEAD)
 if [ "$OLD" = "$NEW" ]; then
-  echo "Déjà à jour (${OLD:0:7})."; refresh_scripts
+  echo "Déjà à jour (${OLD:0:7})."; refresh_scripts; ensure_https
   FINAL=1; write_status ok "Déjà à jour" "$OLD" "$OLD"; exit 0
 fi
 write_status running "Arrêt du service et installation de la nouvelle version…"
@@ -78,7 +81,7 @@ systemctl stop easyludo
 as git reset --hard FETCH_HEAD
 write_status running "Compilation (quelques minutes)…" "$OLD" "$NEW"
 if build; then
-  refresh_scripts; systemctl start easyludo
+  refresh_scripts; systemctl start easyludo; ensure_https
   echo "Mis à jour : ${OLD:0:7} → ${NEW:0:7}"
   FINAL=1; write_status ok "Mise à jour terminée" "$OLD" "$NEW"
 else
