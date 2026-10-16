@@ -1,5 +1,6 @@
 // Sources de prix. Chaque source échoue silencieusement (null) sans bloquer les autres.
 import { cred, isActive } from "./settings";
+import { ebayToken } from "./ebay";
 import { SOURCES } from "./sourcesMeta";
 
 export type Quote = {
@@ -37,22 +38,12 @@ export async function pricecharting(q: PriceQuery): Promise<Quote | null> {
     url: `https://www.pricecharting.com/search-products?type=prices&q=${encodeURIComponent(q.title)}` };
 }
 
-let ebayToken: { v: string; exp: number } | null = null;
 export async function ebay(q: PriceQuery): Promise<Quote | null> {
-  const id = cred("EBAY_CLIENT_ID"), secret = cred("EBAY_CLIENT_SECRET");
-  if (!ebayToken || ebayToken.exp < Date.now()) {
-    const t = await fetch("https://api.ebay.com/identity/v1/oauth2/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: "Basic " + Buffer.from(`${id}:${secret}`).toString("base64") },
-      body: "grant_type=client_credentials&scope=" + encodeURIComponent("https://api.ebay.com/oauth/api_scope"),
-    });
-    if (!t.ok) return null;
-    const j = await t.json();
-    ebayToken = { v: j.access_token, exp: Date.now() + (j.expires_in - 300) * 1000 };
-  }
+  const token = await ebayToken();
+  if (!token) return null;
   const params = new URLSearchParams({ q: `${q.title} ${q.platform}`.trim(), category_ids: "139973", limit: "50" });
   const r = await fetch("https://api.ebay.com/buy/browse/v1/item_summary/search?" + params, {
-    headers: { Authorization: `Bearer ${ebayToken.v}`, "X-EBAY-C-MARKETPLACE-ID": "EBAY_FR" } });
+    headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": "EBAY_FR" } });
   if (!r.ok) return null;
   const prices = ((await r.json()).itemSummaries ?? [])
     .filter((i: any) => i.price?.currency === "EUR").map((i: any) => Number(i.price.value)).filter((n: number) => n > 0).sort((a: number, b: number) => a - b);

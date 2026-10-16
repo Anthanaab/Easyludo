@@ -6,6 +6,7 @@ const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,
 
 import { PLATFORMS } from "./platforms";
 import { cred } from "./settings";
+import { ebayToken } from "./ebay";
 
 export const guessPlatform = (s: string) => PLATFORMS.find((p) => p.re.test(s))?.name ?? "";
 const libretroDirs = (platforms: string) =>
@@ -117,12 +118,37 @@ export async function wikidata(q: string): Promise<Candidate[]> {
   return ids.map((i) => byId.get(i)).filter((c): c is Candidate => !!c);
 }
 
-// ---------- UPCitemdb : code-barres -> titre + image marchande (essai gratuit ~100/jour) ----------
-export async function upcitemdb(code: string): Promise<{ rawTitle: string; image: string } | null> {
-  const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`, { headers: UA });
-  if (!r.ok) return null;
-  const it = (await r.json()).items?.[0];
-  return it?.title ? { rawTitle: it.title, image: (it.images ?? []).find((u: string) => u.startsWith("https://")) ?? "" } : null;
+// ---------- Code-barres ----------
+export type BarcodeHit = { rawTitle: string; image: string; source: string };
+export type BarcodeResult = { hit: BarcodeHit | null; reason?: "unknown" | "rate_limited" | "error" };
+
+// UPCitemdb : essai gratuit (~100 requêtes/jour par adresse), surtout des codes américains
+export async function upcitemdb(code: string): Promise<BarcodeResult> {
+  try {
+    const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`, { headers: UA, signal: AbortSignal.timeout(8000) });
+    if (r.status === 429) return { hit: null, reason: "rate_limited" };
+    if (r.status === 400 || r.status === 404) return { hit: null, reason: "unknown" };
+    if (!r.ok) return { hit: null, reason: "error" };
+    const it = (await r.json()).items?.[0];
+    if (!it?.title) return { hit: null, reason: "unknown" };
+    return { hit: { rawTitle: it.title, image: (it.images ?? []).find((u: string) => u.startsWith("https://")) ?? "", source: "UPCitemdb" } };
+  } catch { return { hit: null, reason: "error" }; }
+}
+
+// eBay : les annonces portent le code-barres (GTIN) du produit, y compris les codes européens (clés eBay gratuites)
+export async function ebayByGtin(code: string): Promise<BarcodeResult> {
+  try {
+    const token = await ebayToken();
+    if (!token) return { hit: null, reason: "error" };
+    for (const gtin of [...new Set([code, code.padStart(13, "0")])]) {
+      const r = await fetch(`https://api.ebay.com/buy/browse/v1/item_summary/search?gtin=${encodeURIComponent(gtin)}&limit=5`,
+        { headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": "EBAY_FR" }, signal: AbortSignal.timeout(8000) });
+      if (!r.ok) continue;
+      const it = ((await r.json()).itemSummaries ?? [])[0];
+      if (it?.title) return { hit: { rawTitle: it.title, image: it.image?.imageUrl ?? "", source: "eBay" } };
+    }
+    return { hit: null, reason: "unknown" };
+  } catch { return { hit: null, reason: "error" }; }
 }
 
 export const cleanTitle = (t: string) => t.replace(/\[.*?\]|\(.*?\)/g, " ").split(/ - | – |,/)[0].replace(/\s+/g, " ").trim();

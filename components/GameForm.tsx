@@ -33,15 +33,28 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
   useEffect(() => setSecure(window.isSecureContext), []);
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
 
+  const [owned, setOwned] = useState<{ id: number; title: string; platform: string }[]>([]);
+
+  const BARCODE_MSG: Record<string, string> = {
+    unknown: "Code-barres lu, mais absent des bases consultées (surtout les codes européens). Saisis le titre : le code sera mémorisé et reconnu la prochaine fois.",
+    rate_limited: "Limite quotidienne du service de code-barres atteinte (environ 100 par jour). Saisis le titre, ou réessaie demain.",
+    error: "Service de code-barres injoignable pour le moment. Saisis le titre ci-dessous.",
+    no_source: "Aucune source de code-barres n'est active (Paramètres). Saisis le titre ci-dessous.",
+  };
+
   async function lookup(params: Record<string, string>) {
-    setBusy(true); setMsg(""); setCands([]);
+    setBusy(true); setMsg(""); setCands([]); setOwned([]);
     const j = await fetch("/api/lookup?" + new URLSearchParams(params)).then((r) => r.json()).catch(() => null);
     setBusy(false);
-    if (!j) return setMsg("Recherche impossible.");
+    if (!j || j.error) return setMsg("Recherche impossible.");
     setCands(j.candidates);
-    if (params.barcode && !j.rawTitle) setMsg("Code-barres inconnu : cherche par titre ci-dessous.");
-    else if (!j.candidates.length) setMsg("Aucun résultat.");
-    if (j.rawTitle && !f.title) set("title", j.rawTitle);
+    if (!params.barcode) { if (!j.candidates.length) setMsg("Aucun résultat."); return; }
+    // Scan : la fiche se remplit toute seule avec le meilleur résultat (en ajout ; en modification on propose seulement)
+    setOwned(j.barcode?.owned ?? []);
+    if (j.candidates.length) {
+      if (!game) pick(j.candidates[0], true);
+      setMsg(game ? "Résultats pour ce code-barres : choisis le bon." : `✓ Trouvé (${j.candidates[0].source}) : vérifie les informations ci-dessous.${j.candidates.length > 1 ? " D'autres résultats sont possibles." : ""}`);
+    } else setMsg(BARCODE_MSG[j.barcode?.status ?? "unknown"]);
   }
 
   const onCode = useCallback((code: string) => {
@@ -51,10 +64,10 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function pick(c: Cand) {
+  function pick(c: Cand, keepList = false) {
     setF((p) => ({ ...p, title: c.title, platform: p.platform || c.platform.split(",")[0], publisher: c.publisher || p.publisher,
       release_year: String(c.release_year ?? ""), cover_url: c.cover_url }));
-    setCands([]);
+    if (!keepList) setCands([]);
   }
 
   async function estimate() {
@@ -128,7 +141,14 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
             <button className="btn" onClick={() => lookup({ q: f.title, platform: f.platform })} disabled={busy || !f.title}>{busy ? "…" : "Chercher"}</button>
           </div>
           {!cab && <span className="hint">Astuce : renseigne la plateforme avant de chercher pour obtenir la bonne jaquette.</span>}
-          {msg && <span className={/requis|Échec|impossible/.test(msg) ? "err" : "hint"}>{msg}</span>}
+          {msg && <span className={/requis|Échec|impossible/.test(msg) ? "err" : msg.startsWith("✓") ? "good" : "hint"}>{msg}</span>}
+          {owned.length > 0 && (
+            <span className="quote">
+              <b>⚠ Déjà dans ta ludothèque</b>
+              <span className="hint">{owned.map((o, i) => <span key={o.id}>{i > 0 && " · "}<a href={`/games/${o.id}`}>{o.title}{o.platform ? ` (${o.platform})` : ""}</a></span>)} — tu peux quand même ajouter un autre exemplaire.</span>
+            </span>
+          )}
+          {cands.length > 1 && !!f.title && <span className="hint">Autres résultats possibles (clique pour remplacer) :</span>}
           <div className="cands">
             {cands.map((c, i) => (
               <button key={i} className="btn cand" onClick={() => pick(c)}>
