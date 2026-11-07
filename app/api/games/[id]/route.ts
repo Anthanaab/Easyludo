@@ -1,5 +1,6 @@
 import { denyIfNotAuthed } from "@/lib/session";
 import db, { FIELDS, normalize } from "@/lib/db";
+import { sanitizeDetails } from "@/lib/itemTypes";
 import { NextRequest, NextResponse } from "next/server";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -18,6 +19,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
   if (!b.title?.trim()) return NextResponse.json({ error: "Titre requis" }, { status: 400 });
   const old = db.prepare("SELECT market_price FROM games WHERE id = ?").get(id) as { market_price: number | null } | undefined;
   if (!old) return NextResponse.json({ error: "Introuvable" }, { status: 404 });
+  b.details = JSON.stringify(sanitizeDetails(b.item_type, b.details));
   const vals = normalize(b);
   const priceChanged = (b.market_price === "" ? null : b.market_price ?? null) !== old.market_price;
   db.prepare(

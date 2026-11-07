@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Game } from "@/lib/db";
 import { BRAND_COLOR, brandOfItem, isCabinet, itemLabel } from "@/lib/platforms";
+import { detailChips, parseDetails } from "@/lib/itemTypes";
 
 export const eur = (n: number | null) => (n == null ? "—" : n.toLocaleString("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: n % 1 ? 2 : 0 }));
 export const delta = (g: Game) => (g.market_price != null && g.purchase_price != null ? g.market_price - g.purchase_price : null);
@@ -22,6 +23,9 @@ export default function GameCard({ g }: { g: Game }) {
       <div className="info">
         <div className="t">{g.title}</div>
         <div className="m">{[g.publisher, g.release_year].filter(Boolean).join(" · ") || "—"}</div>
+        {isCabinet(g.item_type) && detailChips(g.item_type, parseDetails(g.details)).length > 0 && (
+          <div className="m" title={detailChips(g.item_type, parseDetails(g.details)).join(" · ")}>{detailChips(g.item_type, parseDetails(g.details)).join(" · ")}</div>
+        )}
         {g.condition && <div className="m">{g.condition}</div>}
         <div className="prices">
           <div><b>{eur(g.market_price)}</b><div className="m">payé {eur(g.purchase_price)}</div></div>

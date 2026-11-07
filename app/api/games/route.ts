@@ -1,5 +1,6 @@
 import { denyIfNotAuthed } from "@/lib/session";
 import db, { FIELDS, Game, normalize } from "@/lib/db";
+import { sanitizeDetails } from "@/lib/itemTypes";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ export async function POST(req: NextRequest) {
   const denied = await denyIfNotAuthed(); if (denied) return denied;
   const b = await req.json();
   if (!b.title?.trim()) return NextResponse.json({ error: "Titre requis" }, { status: 400 });
+  b.details = JSON.stringify(sanitizeDetails(b.item_type, b.details));
   const hasPrice = b.market_price != null && b.market_price !== "";
   const r = db.prepare(
     `INSERT INTO games (${FIELDS.join(",")}, market_price_date)

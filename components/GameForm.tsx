@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import type { Game } from "@/lib/db";
 import Scanner from "./Scanner";
 import PhotoScan from "./PhotoScan";
-import { ARCADE_SYSTEMS, CABINET_CONDITIONS, ITEM_TYPES, PLATFORMS, brandOfItem, isCabinet, kindOfItem } from "@/lib/platforms";
+import { ARCADE_SYSTEMS, ITEM_TYPES, PLATFORMS, brandOfItem, isCabinet, kindOfItem } from "@/lib/platforms";
+import { CABINET_INFO, DETAIL_FIELDS, parseDetails, type CabinetType, type Details } from "@/lib/itemTypes";
 
 type Cand = { title: string; platform: string; release_year: number | null; cover_url: string; publisher: string; source: string };
 type F = Record<string, string>;
@@ -31,6 +32,14 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
   // Le flux caméra en direct n'est autorisé qu'en HTTPS (ou localhost) ; la photo fonctionne partout
   const [secure, setSecure] = useState(true);
   useEffect(() => setSecure(window.isSecureContext), []);
+  const [detByType, setDetByType] = useState<Record<string, Details>>(() => (game && isCabinet(game.item_type) ? { [game.item_type]: parseDetails(game.details) } : {}));
+  const det: Details = detByType[f.item_type] ?? {};
+  const setDetail = (key: string, value: string | boolean) =>
+    setDetByType((m) => {
+      const cur = { ...(m[f.item_type] ?? {}) };
+      if (value === "" || value === false) delete cur[key]; else cur[key] = value;
+      return { ...m, [f.item_type]: cur };
+    });
   const set = (k: string, v: string) => setF((p) => ({ ...p, [k]: v }));
 
   const [owned, setOwned] = useState<{ id: number; title: string; platform: string }[]>([]);
@@ -90,7 +99,7 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
     setBusy(true);
     const r = await fetch(game ? `/api/games/${game.id}` : "/api/games", {
       method: game ? "PUT" : "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...f, price_source: priceSource }) });
+      body: JSON.stringify({ ...f, details: isCabinet(f.item_type) ? det : {}, price_source: priceSource }) });
     setBusy(false);
     if (!r.ok) return setMsg((await r.json()).error ?? "Erreur");
     router.push("/"); router.refresh();
@@ -103,7 +112,9 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
   }
 
   const cab = isCabinet(f.item_type);
-  const conditions = cab ? ["", ...CABINET_CONDITIONS] : CONDITIONS;
+  const cabType = cab ? (f.item_type as CabinetType) : null;
+  const baseConditions = cabType ? ["", ...CABINET_INFO[cabType].conditions] : CONDITIONS;
+  const conditions = f.condition && !baseConditions.includes(f.condition) ? [...baseConditions, f.condition] : baseConditions;
   const img = f.photo || f.cover_url;
   const eurFmt = (n: number) => n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
   const gain = f.market_price && f.purchase_price ? Number(f.market_price) - Number(f.purchase_price) : null;
@@ -119,9 +130,12 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
           </button>
         ))}
       </div>
+      <span className="hint" style={{ marginTop: -8 }}>
+        {cabType ? CABINET_INFO[cabType].blurb : "Un jeu vidéo (boîte, cartouche ou disque) : scan du code-barres, jaquette et prix du marché automatiques."}
+      </span>
 
       <section className="sec">
-        <h3><i>🔎</i>{cab ? "Identifier la borne" : "Identifier le jeu"}</h3>
+        <h3><i>🔎</i>{f.item_type === "arcade" ? "Identifier la borne de jeux" : f.item_type === "demo" ? "Identifier la borne de démo" : "Identifier le jeu"}</h3>
         <div className="scanbox">
           {!cab && (
             <div style={{ display: "grid", gap: 8 }}>
@@ -136,7 +150,7 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
             </div>
           )}
           <div style={{ display: "flex", gap: 8 }}>
-            <input placeholder={cab ? "Chercher le jeu de la borne (ex : Street Fighter II)" : "…ou chercher par titre (ex : Zelda Ocarina of Time)"} value={f.title} onChange={(e) => set("title", e.target.value)}
+            <input placeholder={f.item_type === "arcade" ? "Chercher le jeu de la borne (ex : Street Fighter II)" : f.item_type === "demo" ? "Chercher le jeu ou la console mis en avant (ex : Nintendo Switch)" : "…ou chercher par titre (ex : Zelda Ocarina of Time)"} value={f.title} onChange={(e) => set("title", e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && lookup({ q: f.title, platform: f.platform })} />
             <button className="btn" onClick={() => lookup({ q: f.title, platform: f.platform })} disabled={busy || !f.title}>{busy ? "…" : "Chercher"}</button>
           </div>
@@ -175,16 +189,16 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
             {f.photo && <button className="btn small" onClick={() => set("photo", "")}>Retirer ma photo</button>}
           </div>
           <div style={{ display: "grid", gap: 12 }}>
-            <div><label>{cab ? "Nom de la borne / du jeu *" : "Titre *"}</label><input value={f.title} onChange={(e) => set("title", e.target.value)} /></div>
+            <div><label>{f.item_type === "arcade" ? "Nom de la borne / du jeu *" : f.item_type === "demo" ? "Nom de la borne de démo *" : "Titre *"}</label><input value={f.title} onChange={(e) => set("title", e.target.value)} placeholder={f.item_type === "demo" ? "ex. Borne démo Nintendo Switch, kiosque PS2 Micromania" : undefined} /></div>
             <div className="row">
               <div>
-                <label>{f.item_type === "arcade" ? "Système / carte" : f.item_type === "demo" ? "Console de la borne" : "Plateforme"}</label>
+                <label>{f.item_type === "arcade" ? "Système / carte" : f.item_type === "demo" ? "Console mise en avant" : "Plateforme"}</label>
                 <input list="platforms" value={f.platform} onChange={(e) => set("platform", e.target.value)}
                   placeholder={f.item_type === "arcade" ? "Neo Geo MVS, CPS-2, JAMMA…" : "Switch, PS2, Mega Drive…"} />
                 <datalist id="platforms">{(f.item_type === "arcade" ? ARCADE_SYSTEMS : PLATFORMS.map((p) => p.name)).map((n) => <option key={n} value={n} />)}</datalist>
                 {(f.platform || cab) && <span className="hint">{brandOfItem(f as any)} · {kindOfItem(f as any)}</span>}
               </div>
-              <div><label>{cab ? "Constructeur / éditeur" : "Éditeur"}</label><input value={f.publisher} onChange={(e) => set("publisher", e.target.value)} placeholder={cab ? "Taito, Capcom, SNK, Sega…" : "Nintendo, Capcom…"} /></div>
+              <div><label>{f.item_type === "arcade" ? "Constructeur du jeu" : f.item_type === "demo" ? "Marque / éditeur de la borne" : "Éditeur"}</label><input value={f.publisher} onChange={(e) => set("publisher", e.target.value)} placeholder={f.item_type === "arcade" ? "Taito, Capcom, SNK, Sega…" : f.item_type === "demo" ? "Nintendo, Sony, Microsoft…" : "Nintendo, Capcom…"} /></div>
             </div>
             <div className="row">
               <div><label>Année de sortie</label><input value={f.release_year} onChange={(e) => set("release_year", e.target.value)} inputMode="numeric" /></div>
@@ -199,6 +213,37 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
           </div>
         </div>
       </section>
+
+      {cabType && (
+        <section className="sec">
+          <h3><i>{CABINET_INFO[cabType].icon}</i>{CABINET_INFO[cabType].title}</h3>
+          <div className="row">
+            {DETAIL_FIELDS[cabType].map((fl) => (
+              <div key={`${cabType}-${fl.key}`}>
+                {fl.kind === "bool" ? (
+                  <label className="check">
+                    <input type="checkbox" checked={det[fl.key] === true} onChange={(e) => setDetail(fl.key, e.target.checked)} /> {fl.label}
+                  </label>
+                ) : (
+                  <>
+                    <label>{fl.label}{fl.unit ? ` (${fl.unit})` : ""}</label>
+                    {fl.kind === "select" ? (
+                      <select value={String(det[fl.key] ?? "")} onChange={(e) => setDetail(fl.key, e.target.value)}>
+                        <option value="">— Non précisé —</option>
+                        {fl.options!.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    ) : (
+                      <input value={String(det[fl.key] ?? "")} placeholder={fl.placeholder}
+                        inputMode={fl.kind === "number" ? "numeric" : undefined}
+                        onChange={(e) => setDetail(fl.key, fl.kind === "number" ? e.target.value.replace(/[^\d.,]/g, "").replace(",", ".") : e.target.value)} />
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="sec">
         <h3><i>💶</i>Prix {gain != null && <span className={`pill ${gain >= 0 ? "good" : "bad"}`}>{gain >= 0 ? "+" : "−"}{eurFmt(Math.abs(gain))}</span>}</h3>
@@ -240,7 +285,7 @@ export default function GameForm({ game, history = [] }: { game?: Game; history?
 
       <section className="sec">
         <h3><i>🗒️</i>Notes</h3>
-        <textarea rows={3} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder={cab ? "Dimensions, écran (CRT/LCD), nombre de joueurs, jeux installés, historique…" : "Édition, version, défauts, souvenirs…"} />
+        <textarea rows={3} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder={f.item_type === "arcade" ? "Historique, réparations faites, pièces changées, jeux installés…" : f.item_type === "demo" ? "Où elle a été récupérée, accessoires, particularités…" : "Édition, version, défauts, souvenirs…"} />
       </section>
 
       <div className="actions">

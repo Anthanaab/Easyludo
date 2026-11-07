@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Game } from "@/lib/db";
+import { detailsText, parseDetails } from "@/lib/itemTypes";
 import { BRAND_COLOR, ITEM_TYPES, brandOfItem, itemLabel, kindOfItem } from "@/lib/platforms";
 import GameCard, { Delta, eur } from "./GameCard";
 
@@ -33,7 +34,7 @@ export default function Library({ games }: { games: Game[] }) {
 
   const shown = useMemo(() => {
     let l = games.filter((g) => activeFilters.every((k) => keyOf(g, k) === f[k]) &&
-      (g.title + " " + g.barcode + " " + g.publisher + " " + g.platform).toLowerCase().includes(q.toLowerCase()));
+      (g.title + " " + g.barcode + " " + g.publisher + " " + g.platform + " " + detailsText(g.item_type, parseDetails(g.details))).toLowerCase().includes(q.toLowerCase()));
     if (sort === "title") l = [...l].sort((a, b) => a.title.localeCompare(b.title));
     if (sort === "value") l = [...l].sort((a, b) => (b.market_price ?? 0) - (a.market_price ?? 0));
     if (sort === "gain") l = [...l].sort((a, b) => ((b.market_price ?? 0) - (b.purchase_price ?? 0)) - ((a.market_price ?? 0) - (a.purchase_price ?? 0)));

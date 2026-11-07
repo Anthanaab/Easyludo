@@ -56,4 +56,3 @@ type Item = { platform: string; item_type?: string };
 export const brandOfItem = (g: Item) => (isCabinet(g.item_type ?? "") ? itemLabel(g.item_type!) : brandOf(g.platform));
 export const kindOfItem = (g: Item) => (isCabinet(g.item_type ?? "") ? "Borne" : kindOf(g.platform));
 export const ARCADE_SYSTEMS = ["Neo Geo MVS", "CPS-1", "CPS-2", "CPS-3", "JAMMA", "Naomi", "Sega System 16", "Namco System 22", "Taito F3", "Konami", "Atomiswave", "Borne dédiée (monogame)", "Multi-jeux (pandora, etc.)"];
-export const CABINET_CONDITIONS = ["Fonctionnelle", "Fonctionnelle (écran ou commandes à revoir)", "À réparer", "Pour pièces", "Restaurée"];
