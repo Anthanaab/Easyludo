@@ -12,4 +12,4 @@ export function proxy(req: NextRequest) {
   return NextResponse.redirect(url);
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+export const config = { matcher: ["/((?!_next/static|favicon.ico).*)"] };
